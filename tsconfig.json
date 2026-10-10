@@ -20,6 +20,7 @@
       "@openfront/engine/*": ["./vendor/OpenFrontIO/packages/engine/src/*"],
       "@openfront/engine-api/*": ["./vendor/OpenFrontIO/packages/engine-api/src/*"],
       "@openfront/engine-lib/*": ["./vendor/OpenFrontIO/packages/engine-lib/src/*"],
+      "@openfront/zbin": ["./vendor/OpenFrontIO/packages/zbin/src/index.ts"],
       "@openfront/zbin/*": ["./vendor/OpenFrontIO/packages/zbin/src/*"],
       "resources/*": ["./vendor/OpenFrontIO/resources/*"]
     }
