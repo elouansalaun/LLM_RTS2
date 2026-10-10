@@ -1,0 +1,25 @@
+{
+  "name": "llm-rts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local LLM (Qwen 3.5 9B in LM Studio) plays OpenFront against the game's own bots on the Australia map",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "setup": "bash scripts/setup_openfront.sh",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

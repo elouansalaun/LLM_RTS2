@@ -1,0 +1,43 @@
+{
+  // The OpenFront engine ships raw TypeScript; it is compiled together with
+  // this project. Its classes rely on the class-field and decorator options
+  // below (they match OpenFrontIO's tsconfig.base.json). With other options
+  // the engine's own AI crashes at runtime.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@openfront/engine/*": ["./vendor/OpenFrontIO/packages/engine/src/*"],
+      "@openfront/engine-api/*": ["./vendor/OpenFrontIO/packages/engine-api/src/*"],
+      "@openfront/engine-lib/*": ["./vendor/OpenFrontIO/packages/engine-lib/src/*"],
+      "@openfront/zbin/*": ["./vendor/OpenFrontIO/packages/zbin/src/*"],
+      "resources/*": ["./vendor/OpenFrontIO/resources/*"]
+    }
+  },
+  // tsx only applies these options to included files, so the engine
+  // packages are listed too. Their web-worker entry points are never loaded.
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "notebooks/**/*.ts",
+    "vitest.config.ts",
+    "vendor/OpenFrontIO/packages/engine/src/**/*",
+    "vendor/OpenFrontIO/packages/engine-api/src/**/*",
+    "vendor/OpenFrontIO/packages/engine-lib/src/**/*",
+    "vendor/OpenFrontIO/packages/zbin/src/**/*"
+  ],
+  "exclude": [
+    "vendor/OpenFrontIO/packages/engine/src/worker",
+    "vendor/OpenFrontIO/packages/engine-api/src/worker"
+  ]
+}
