@@ -112,14 +112,19 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
       toIntent: () => ({ type: "allianceRequest", recipient: p.id() }),
     });
   }
-  // Alliances with nations only: tribes do not make alliances.
+  // Nations anywhere; tribes only when they border us (there are many, and they always accept).
+  const bordering = new Set(neighbours.map((n) => n.key));
   for (const p of game.players()) {
     const key = keys.get(p.id())!;
-    if (p === me || p.type() === PlayerType.Bot || me.isAlliedWith(p)) continue;
+    if (p === me || me.isAlliedWith(p)) continue;
+    if (p.type() === PlayerType.Bot && !bordering.has(key)) continue;
     if (snap.me.allianceRequests.includes(key) || !me.canSendAllianceRequest(p)) continue;
     options.push({
       id: `ally_${key}`,
-      label: `propose an alliance to ${p.displayName()} (${kindLabel(p)}, ${regionOf(game, centreOf(game, p))})`,
+      label:
+        p.type() === PlayerType.Bot
+          ? `ally with ${p.displayName()} (tribe: always accepts; you can no longer attack it)`
+          : `propose an alliance to ${p.displayName()} (${kindLabel(p)}, ${regionOf(game, centreOf(game, p))})`,
       usesTroops: false,
       toIntent: () => ({ type: "allianceRequest", recipient: p.id() }),
     });
