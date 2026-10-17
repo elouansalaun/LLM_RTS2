@@ -1,6 +1,6 @@
 import type { Player } from "@openfront/engine/game/Game";
 import type { OpenFrontGame } from "../engine/game";
-import { directionFrom, playerKeys, PlayerView, Snapshot } from "./observe";
+import { directionFrom, playerKeys, PlayerView, regionOf, Snapshot } from "./observe";
 
 export const UNCLAIMED = "unclaimed";
 
@@ -144,6 +144,21 @@ export function describeSituation(snap: Snapshot, graph: Graph): string {
   }
   lines.push("", `Largest players: ${snap.others.slice(0, 5).map((p) => `${p.name} ${p.landPct}%`).join(", ")}.`);
   return lines.join("\n");
+}
+
+/** The situation before the game starts: only the nations' fixed starts are known. */
+export function describeSpawn(g: OpenFrontGame): string {
+  const game = g.game;
+  const nations = game
+    .nations()
+    .filter((n) => n.spawnCell !== undefined)
+    .map((n) => `${n.playerInfo.name} (${regionOf(game, n.spawnCell!)})`);
+  return [
+    `The game is about to start on the ${g.settings.map} map (${game.width()} × ${game.height()} tiles, ${fmt(game.numLandTiles())} land tiles).`,
+    `You are ${g.settings.playerName}. Choose where to start.`,
+    `Nations (strong AI) start at fixed places: ${nations.join(", ")}.`,
+    `${g.settings.bots} tribes (weak AI) will start at random places.`,
+  ].join("\n");
 }
 
 /** Mermaid diagram of the player's neighbourhood, for the notebooks and reports. */

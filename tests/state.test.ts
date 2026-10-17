@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { diffEvents } from "../src/agent/events";
 import { buildGraph, describeSituation, neighboursOf, toMermaid, UNCLAIMED } from "../src/state/graph";
 import { directionFrom, observe, playerKeys, regionOf } from "../src/state/observe";
 import { renderASCII, renderPNG } from "../src/state/render";
@@ -50,6 +51,16 @@ describe("observation and graph", async () => {
     expect(regionOf(g.game, { x: 500, y: 375 })).toBe("centre");
     expect(directionFrom({ x: 0, y: 0 }, { x: 100, y: 0 })).toBe("east");
     expect(directionFrom({ x: 0, y: 0 }, { x: 0, y: -100 })).toBe("north");
+  });
+
+  it("writes what changed between two snapshots as events", () => {
+    const before = observe(g);
+    g.submit({ type: "attack", targetID: null, troops: g.me.troops() * 0.5 });
+    g.advance(100);
+    const after = observe(g);
+    const events = diffEvents(before, after).map((e) => e.text);
+    expect(events.some((e) => /^You gained [\d,]+ tiles\.$/.test(e))).toBe(true);
+    expect(diffEvents(null, after)).toEqual([]);
   });
 
   it("renders the map as PNG and as text", () => {
