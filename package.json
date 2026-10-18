@@ -10,6 +10,8 @@
   },
   "scripts": {
     "setup": "bash scripts/setup_openfront.sh",
+    "play": "tsx src/cli/play.ts",
+    "check-llm": "tsx src/cli/check_llm.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

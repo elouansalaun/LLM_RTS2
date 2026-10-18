@@ -1,0 +1,27 @@
+{
+  "game": {
+    "map": "Australia",
+    "mapSize": "Compact",
+    "difficulty": "Medium",
+    "nations": "default",
+    "bots": 20,
+    "seed": "australia-1",
+    "playerName": "Qwen"
+  },
+  "agent": {
+    "decisionEverySeconds": 5,
+    "strategistEverySeconds": 30,
+    "maxActions": 2,
+    "knowledgeSections": 6
+  },
+  "llm": {
+    "baseURL": "http://localhost:1234/v1",
+    "model": "qwen/qwen3.5-9b",
+    "temperature": 0.3,
+    "maxTokens": 800,
+    "timeoutSeconds": 180,
+    "contextLength": 16384
+  },
+  "maxMinutes": 30,
+  "mapEveryMinutes": 5
+}
