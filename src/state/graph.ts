@@ -92,8 +92,9 @@ export function describeSituation(snap: Snapshot, graph: Graph): string {
   lines.push(
     `Time ${clock(snap.seconds)}. You are ${me.name}, in the ${me.region} of the map.`,
     `You: ${fmt(me.tiles)} tiles (${me.landPct}% of the land, rank ${me.rank} of ${snap.playersAlive}), ` +
-      `${fmt(me.troops)} troops (${me.troopsPctOfCap}% of your cap of ${fmt(me.troopCap)}), ${fmt(me.gold)} gold, ` +
-      `${me.cities} cities, ${me.ports} ports, ${me.defensePosts} defense posts${me.coastal ? ", coastal" : ""}.`,
+      `${fmt(me.troops)} troops = ${me.troopsPctOfCap}% of your maximum of ${fmt(me.troopCap)} (${reserveHint(me.troopsPctOfCap)}), ${fmt(me.gold)} gold, ` +
+      `${count(me.cities, "city", "cities")}, ${count(me.ports, "port")}, ${count(me.defensePosts, "defense post")}` +
+      `${me.coastal ? ", coastal" : ", no coast"}.`,
     `Unclaimed land: ${snap.unclaimedPct}% of the map.`,
   );
   if (me.incomingAttacks.length > 0) {
@@ -125,7 +126,7 @@ export function describeSituation(snap: Snapshot, graph: Graph): string {
       .map((e) => nameOf(byKey, e.to));
     const parts = [
       `${p.name} (${p.kind}, ${directionFrom(me.centre, p.centre)}): border ${n.border} tiles`,
-      `${fmt(p.tiles)} tiles, ${fmt(p.troops)} troops = ${ratio.toFixed(1)}× yours, ${p.troopsPerTile} troops/tile`,
+      `${fmt(p.tiles)} tiles, ${fmt(p.troops)} troops, ${strength(ratio)}, ${p.troopsPerTile} troops/tile`,
     ];
     if (p.relation !== null) parts.push(`feels ${p.relation} towards you`);
     if (p.allied) parts.push("ALLIED with you");
@@ -185,6 +186,28 @@ function nameOf(byKey: Map<string, PlayerView>, key: string): string {
 export function clock(seconds: number): string {
   const s = Math.floor(seconds);
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Words, not just numbers. In my first tests Qwen 3.5 9B read "0.5× yours" as
+ * "they outnumber us" and "92% of your cap" as "reserve nearly empty", so I
+ * write the conclusion next to the number.
+ */
+export function strength(ratio: number): string {
+  if (ratio < 0.8) return `WEAKER than you (they have ${ratio.toFixed(1)}× your troops)`;
+  if (ratio <= 1.25) return `about as strong as you (${ratio.toFixed(1)}× your troops)`;
+  return `STRONGER than you (they have ${ratio.toFixed(1)}× your troops)`;
+}
+
+function reserveHint(pct: number): string {
+  if (pct >= 95) return "full: troops have stopped growing, use them";
+  if (pct > 60) return "high: growth is slowing, troops are available";
+  if (pct >= 25) return "good range for growth";
+  return "low: vulnerable to attacks";
+}
+
+function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 export function fmt(n: number): string {
