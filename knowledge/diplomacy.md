@@ -20,10 +20,6 @@ Each nation keeps a relation towards you, from hostile to friendly. Alliances an
 <!-- type: strategy; tags: diplomacy, nations, defend; when: early, mid; status: to evaluate -->
 Propose an alliance to a stronger neighbour you cannot beat, so you can push against weaker ones without fighting on two fronts.
 
-## Do not ally with your next meal
-<!-- type: strategy; tags: diplomacy, tribes, attack; when: early, mid; status: to evaluate -->
-An alliance with a tribe is free, but it protects the tribe from you. Ally only with tribes you will not need to attack, for example to keep a quiet border while you fight a nation elsewhere.
-
 ## Accept useful alliances
 <!-- type: strategy; tags: diplomacy; when: any; status: to evaluate -->
 Accept alliance requests from neighbours you are not planning to attack in the next few minutes: it removes a threat for free. Refuse (let expire) requests from the neighbour you plan to attack next.
