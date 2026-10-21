@@ -36,7 +36,7 @@ export function strategistSystem(core: KnowledgeSection[]): string {
     "",
     "Answer with a JSON object:",
     '- "assessment": one or two sentences on the situation: the main threat and the main opportunity.',
-    '- "plan": what to do for the next 30 seconds, in one to three short sentences. Be concrete: name the target and how much of the army to use.',
+    '- "plan": what to do for the next 30 seconds, in one to three short sentences. Be concrete: name the target and the share of your troops to send, as a percentage (for example "attack Fijian Territory with 30% of the troops").',
     `- "priorities": one to three of ${PRIORITIES.join(", ")}, most important first.`,
     '- "focus": the one player that matters most right now (to attack or to watch), "unclaimed", or "none".',
     '- "knowledge_used": the titles of the knowledge excerpts your plan relies on (up to three).',
@@ -91,7 +91,8 @@ export function commanderSystem(core: KnowledgeSection[], maxActions: number): s
     "",
     "Answer with a JSON object:",
     '- "reason": one short sentence: why these orders.',
-    `- "actions": 0 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send}. troops_percent only matters for options marked [sends troops]; use 10 for the others.`,
+    `- "actions": 0 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
+    "  For options marked [sends troops], choose troops_percent from the plan and the situation: 20-30 is a normal expansion wave, 40-60 a serious attack. For all other options put 0.",
     "Running attacks continue on their own: only repeat one to send more troops. Choosing nothing (or \"wait\") is fine when the running orders already follow the plan.",
   ].join("\n");
 }

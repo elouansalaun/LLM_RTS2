@@ -1,6 +1,6 @@
 import type { Intent } from "@openfront/engine-api/Schemas";
 import { z } from "zod";
-import { MenuOption, TROOP_PERCENTS } from "../actions/menu";
+import { DEFAULT_TROOP_PERCENT, MenuOption, TROOP_PERCENTS } from "../actions/menu";
 import { KnowledgeSection, Phase, phaseOf, retrieve, situationTags } from "../knowledge/kb";
 import type { ChatRequest, ChatResult, LLM } from "../llm/lmstudio";
 import { Graph, neighboursOf, UNCLAIMED } from "../state/graph";
@@ -217,7 +217,8 @@ export class LLMPlayer {
       const option = byId.get(a.id);
       if (option === undefined || seen.has(a.id) || orders.length >= this.settings.maxActions) continue;
       seen.add(a.id);
-      const pct = (TROOP_PERCENTS as readonly number[]).includes(a.troops_percent) ? a.troops_percent : 20;
+      const valid = (TROOP_PERCENTS as readonly number[]).includes(a.troops_percent) && a.troops_percent > 0;
+      const pct = option.usesTroops ? (valid ? a.troops_percent : DEFAULT_TROOP_PERCENT) : 0;
       orders.push({ id: option.id, troopsPercent: pct, label: option.label, intent: option.toIntent(pct) });
     }
     // The game cannot start without a spawn: fall back to the first candidate.

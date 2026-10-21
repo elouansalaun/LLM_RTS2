@@ -25,9 +25,12 @@ export interface MenuOption {
 /**
  * Shares of the current troops the LLM may send, in %. I use a short list
  * rather than a free number because constrained decoding of a free number can
- * run away (0.0555555… until the token limit).
+ * run away (0.0555555… until the token limit). 0 means "not a troop order".
  */
-export const TROOP_PERCENTS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+export const TROOP_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+/** Share used when the model gives 0 for an order that sends troops (the game's own default is 20%). */
+export const DEFAULT_TROOP_PERCENT = 20;
 
 export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuOption[] {
   if (snap.spawnPhase) return spawnMenu(g.game);
