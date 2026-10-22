@@ -28,6 +28,13 @@ export const AgentSettingsSchema = z.object({
   maxActions: z.number().int().min(1).max(4).default(2),
   /** Knowledge sections given to the strategist, besides the core rules. */
   knowledgeSections: z.number().int().min(0).max(20).default(6),
+  /**
+   * Safety rule: the orders of one turn never send more than this share of the
+   * troops in total; larger requests are scaled down. In my test games the
+   * model sent 40% + 50% into two wars in the same turn, against its own plan.
+   * 100 disables the rule.
+   */
+  maxTroopsPercentPerTurn: z.number().min(10).max(100).default(60),
 });
 export type AgentSettings = z.output<typeof AgentSettingsSchema>;
 
@@ -53,6 +60,8 @@ export interface StrategistTurn extends LLMCall {
 export interface Order {
   id: string;
   troopsPercent: number;
+  /** What the model asked for, when the safety rule scaled it down. */
+  requestedPercent?: number;
   label: string;
   intent: Intent | null;
 }
@@ -186,7 +195,7 @@ export class LLMPlayer {
     events: GameEvent[];
   }): Promise<LLMCall & { reason: string }> {
     const request: ChatRequest = {
-      system: commanderSystem(this.core, this.settings.maxActions),
+      system: commanderSystem(this.core, this.settings.maxActions, this.settings.maxTroopsPercentPerTurn),
       user: commanderUser({
         plan: this.plan,
         planKnowledge: this.kb.filter((s) => this.plan?.knowledge_used.includes(s.title)),
@@ -213,13 +222,26 @@ export class LLMPlayer {
     const byId = new Map(menu.map((o) => [o.id, o]));
     const seen = new Set<string>();
     const orders: Order[] = [];
+    const chosen: { option: MenuOption; pct: number }[] = [];
     for (const a of parsed.success ? parsed.data.actions : []) {
       const option = byId.get(a.id);
-      if (option === undefined || seen.has(a.id) || orders.length >= this.settings.maxActions) continue;
+      if (option === undefined || seen.has(a.id) || chosen.length >= this.settings.maxActions) continue;
       seen.add(a.id);
       const valid = (TROOP_PERCENTS as readonly number[]).includes(a.troops_percent) && a.troops_percent > 0;
-      const pct = option.usesTroops ? (valid ? a.troops_percent : DEFAULT_TROOP_PERCENT) : 0;
-      orders.push({ id: option.id, troopsPercent: pct, label: option.label, intent: option.toIntent(pct) });
+      chosen.push({ option, pct: option.usesTroops ? (valid ? a.troops_percent : DEFAULT_TROOP_PERCENT) : 0 });
+    }
+    // All troop orders of a turn are computed on the same army: 40% + 50% sends 90% of it.
+    const total = chosen.reduce((sum, c) => sum + c.pct, 0);
+    const scale = total > this.settings.maxTroopsPercentPerTurn ? this.settings.maxTroopsPercentPerTurn / total : 1;
+    for (const { option, pct } of chosen) {
+      const final = Math.floor(pct * scale);
+      orders.push({
+        id: option.id,
+        troopsPercent: final,
+        ...(final !== pct ? { requestedPercent: pct } : {}),
+        label: option.label,
+        intent: option.toIntent(final),
+      });
     }
     // The game cannot start without a spawn: fall back to the first candidate.
     if (snap.spawnPhase && !orders.some((o) => o.id.startsWith("spawn_")) && menu.length > 0) {

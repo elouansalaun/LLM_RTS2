@@ -80,7 +80,7 @@ export function strategistSchema(focusOptions: string[], titles: string[]): Reco
 
 // ── commander ──
 
-export function commanderSystem(core: KnowledgeSection[], maxActions: number): string {
+export function commanderSystem(core: KnowledgeSection[], maxActions: number, maxTroopsPercent: number): string {
   return [
     GAME,
     "",
@@ -93,6 +93,7 @@ export function commanderSystem(core: KnowledgeSection[], maxActions: number): s
     '- "reason": one short sentence: why these orders.',
     `- "actions": 0 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
     "  For options marked [sends troops], choose troops_percent from the plan and the situation: 20-30 is a normal expansion wave, 40-60 a serious attack. For all other options put 0.",
+    `  All orders of a turn draw on the same army: 30% + 30% sends 60% of it. At most ${maxTroopsPercent}% of your troops can leave in one turn; larger requests are scaled down.`,
     "Running attacks continue on their own: only repeat one to send more troops. Choosing nothing (or \"wait\") is fine when the running orders already follow the plan.",
   ].join("\n");
 }

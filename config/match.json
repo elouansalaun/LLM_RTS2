@@ -12,7 +12,8 @@
     "decisionEverySeconds": 5,
     "strategistEverySeconds": 30,
     "maxActions": 2,
-    "knowledgeSections": 6
+    "knowledgeSections": 6,
+    "maxTroopsPercentPerTurn": 60
   },
   "llm": {
     "baseURL": "http://localhost:1234/v1",

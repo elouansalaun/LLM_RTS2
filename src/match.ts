@@ -97,7 +97,7 @@ export async function playMatch(
     }
     const orders = turn.orders.map((o) =>
       o.intent?.type === "attack" || o.intent?.type === "boat"
-        ? `${o.id} ${o.troopsPercent}%`
+        ? `${o.id} ${o.troopsPercent}%${o.requestedPercent !== undefined ? ` (asked ${o.requestedPercent}%)` : ""}`
         : o.id,
     );
     const where = snap.spawnPhase
