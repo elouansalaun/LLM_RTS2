@@ -22,7 +22,7 @@ describe("knowledge base", () => {
   });
 
   it("retrieves spawn knowledge before the game starts", () => {
-    const { core, selected } = retrieve(kb, ["spawn", "map", "expand"], "spawn");
+    const { core, selected } = retrieve(kb, { tags: ["spawn", "map", "expand"], urgent: ["spawn"] }, "spawn");
     expect(core.map((s) => s.title)).toEqual(["Core rules", "Time"]);
     expect(selected.map((s) => s.title)).toContain("Start in open plains");
     expect(selected.every((s) => s.when.includes("spawn") || s.when.includes("any"))).toBe(true);
@@ -33,12 +33,22 @@ describe("knowledge base", () => {
     const snap = observe(g);
     const graph = buildGraph(g);
     expect(phaseOf(snap)).toBe("early");
-    const tags = situationTags(snap, graph);
-    expect(tags).toContain("expand");
-    const a = retrieve(kb, tags, "early").selected.map((s) => s.title);
-    const b = retrieve(kb, tags, "early").selected.map((s) => s.title);
+    const situation = situationTags(snap, graph);
+    expect(situation.tags).toContain("expand");
+    expect(situation.urgent).toContain("expand"); // lots of free land next to us
+    const a = retrieve(kb, situation, "early").selected.map((s) => s.title);
+    const b = retrieve(kb, situation, "early").selected.map((s) => s.title);
     expect(a).toEqual(b);
     expect(a).toContain("Taking unclaimed land");
+  });
+
+  it("puts urgent topics first", () => {
+    const KEEP = "Keep troops near 40% of the cap";
+    const calm = retrieve(kb, { tags: ["attack", "tribes", "nations", "diplomacy", "troops"], urgent: [] }, "mid").selected.map((s) => s.title);
+    const full = retrieve(kb, { tags: ["attack", "tribes", "nations", "diplomacy", "troops"], urgent: ["troops"] }, "mid").selected.map((s) => s.title);
+    const rank = (list: string[]) => (list.includes(KEEP) ? list.indexOf(KEEP) : Infinity);
+    expect(full).toContain(KEEP);
+    expect(rank(full)).toBeLessThan(rank(calm));
   });
 });
 

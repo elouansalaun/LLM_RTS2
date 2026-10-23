@@ -62,55 +62,70 @@ export function phaseOf(snap: Snapshot): Phase {
   return "mid";
 }
 
+/** The retrieval query: topics that matter now, and the pressing ones among them. */
+export interface Situation {
+  tags: string[];
+  /** Pressing topics (under attack, reserve full or empty…): they weigh double. */
+  urgent: string[];
+}
+
 /**
  * Situation tags, read off the snapshot and the graph. They are the "query"
  * of the retrieval: each tag names a topic that matters right now.
  */
-export function situationTags(snap: Snapshot, graph: Graph): string[] {
-  if (snap.spawnPhase) return ["spawn", "map", "expand"];
+export function situationTags(snap: Snapshot, graph: Graph): Situation {
+  if (snap.spawnPhase) return { tags: ["spawn", "map", "expand"], urgent: ["spawn"] };
   const me = snap.me;
   const tags = new Set<string>();
+  const urgent = new Set<string>();
   const neighbours = neighboursOf(graph, me.key);
   const byKey = new Map(snap.others.map((p) => [p.key, p]));
   const players = neighbours.map((n) => byKey.get(n.key)).filter((p): p is PlayerView => p !== undefined);
-  if (neighbours.some((n) => n.key === UNCLAIMED)) tags.add("expand");
-  else tags.add("attack");
+  const freeLand = neighbours.some((n) => n.key === UNCLAIMED);
+  if (freeLand) tags.add("expand");
+  if (freeLand && snap.unclaimedPct > 15) urgent.add("expand");
+  if (!freeLand) tags.add("attack");
   if (players.some((p) => p.kind === "tribe")) tags.add("tribes").add("attack");
   if (players.some((p) => p.kind === "nation")) tags.add("nations");
+  if (me.incomingAttacks.length > 0) urgent.add("defend");
   if (me.incomingAttacks.length > 0 || players.some((p) => p.troops > me.troops)) tags.add("defend");
   if (me.gold >= 50_000) tags.add("build").add("economy");
+  if (me.allianceRequests.length > 0) urgent.add("diplomacy");
   if (me.allianceRequests.length > 0 || players.some((p) => p.kind === "nation")) tags.add("diplomacy");
-  if (me.coastal && !neighbours.some((n) => n.key === UNCLAIMED)) tags.add("naval");
+  if (me.coastal && !freeLand) tags.add("naval");
   if (me.troopsPctOfCap > 60 || me.troopsPctOfCap < 25) tags.add("troops");
+  if (me.troopsPctOfCap > 80 || me.troopsPctOfCap < 20) urgent.add("troops");
   if (phaseOf(snap) === "late") tags.add("win");
-  return [...tags];
+  for (const u of urgent) tags.add(u);
+  return { tags: [...tags], urgent: [...urgent] };
 }
 
 /**
- * Deterministic retrieval: sections tagged "core" are always included; the
- * others are scored by how many situation tags they share (2 points each)
- * plus 1 point if they are written for the current phase. Highest scores win;
- * ties keep the knowledge base's order. I left out embeddings and LLM ranking
- * on purpose: the same situation always gives the same knowledge, so two runs
+ * Deterministic retrieval: sections tagged "core" are always included. The
+ * others must be written for the current phase; each tag they share with the
+ * situation scores 2 points, 4 if the tag is urgent. Highest scores win; ties
+ * keep the knowledge base's order. I left out embeddings and LLM ranking on
+ * purpose: the same situation always gives the same knowledge, so two runs
  * can be compared.
  */
 export function retrieve(
   kb: KnowledgeSection[],
-  tags: string[],
+  situation: Situation,
   phase: Phase,
   limit = 6,
-): { core: KnowledgeSection[]; selected: KnowledgeSection[] } {
+): { core: KnowledgeSection[]; selected: KnowledgeSection[]; scores: number[] } {
   const core = kb.filter((s) => s.tags.includes("core"));
   const scored = kb
-    .filter((s) => !s.tags.includes("core"))
     .map((s, i) => {
-      const overlap = s.tags.filter((t) => tags.includes(t)).length;
-      const timely = s.when.includes(phase) || s.when.includes("any") ? 1 : 0;
-      return { s, i, score: overlap * 2 + timely, overlap };
+      const shared = s.tags.filter((t) => situation.tags.includes(t));
+      const score = shared.reduce((sum, t) => sum + (situation.urgent.includes(t) ? 4 : 2), 0);
+      return { s, i, score };
     })
-    .filter((e) => e.overlap > 0 && (e.s.when.includes(phase) || e.s.when.includes("any")))
-    .sort((a, b) => b.score - a.score || a.i - b.i);
-  return { core, selected: scored.slice(0, limit).map((e) => e.s) };
+    .filter((e) => !e.s.tags.includes("core") && e.score > 0)
+    .filter((e) => e.s.when.includes(phase) || e.s.when.includes("any"))
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, limit);
+  return { core, selected: scored.map((e) => e.s), scores: scored.map((e) => e.score) };
 }
 
 /** A section as the LLM reads it: facts and strategies are labelled differently. */

@@ -53,6 +53,7 @@ export interface StrategistTurn extends LLMCall {
   trigger: string;
   phase: Phase;
   tags: string[];
+  urgent: string[];
   knowledge: string[];
   plan: Plan;
 }
@@ -141,8 +142,8 @@ export class LLMPlayer {
   ): Promise<StrategistTurn> {
     const { snap, graph } = input;
     const phase = phaseOf(snap);
-    const tags = situationTags(snap, graph);
-    const knowledge = retrieve(this.kb, tags, phase, this.settings.knowledgeSections).selected;
+    const situation = situationTags(snap, graph);
+    const knowledge = retrieve(this.kb, situation, phase, this.settings.knowledgeSections).selected;
     const focus = [
       ...new Set([
         ...neighboursOf(graph, snap.me.key).map((n) => n.key).filter((k) => k !== UNCLAIMED),
@@ -183,7 +184,8 @@ export class LLMPlayer {
       error: call.error ?? (parsed.success ? null : `invalid plan: ${parsed.error.issues[0]?.message}`),
       trigger,
       phase,
-      tags,
+      tags: situation.tags,
+      urgent: situation.urgent,
       knowledge: knowledge.map((k) => k.title),
       plan: this.plan,
     };
