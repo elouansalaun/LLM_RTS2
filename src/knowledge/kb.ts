@@ -101,12 +101,15 @@ export function situationTags(snap: Snapshot, graph: Graph): Situation {
 }
 
 /**
- * Deterministic retrieval: sections tagged "core" are always included. The
- * others must be written for the current phase; each tag they share with the
- * situation scores 2 points, 4 if the tag is urgent. Highest scores win; ties
- * keep the knowledge base's order. I left out embeddings and LLM ranking on
- * purpose: the same situation always gives the same knowledge, so two runs
- * can be compared.
+ * Deterministic retrieval. Sections tagged "core" are always included. The
+ * others must be written for the current phase, and are picked one by one:
+ * each tag a section shares with the situation is worth 2 points (4 if the
+ * tag is urgent), divided by 1 + the number of sections already picked for
+ * that tag. So the first sections cover the most pressing topics, and each
+ * following one has to bring something the others did not. Ties keep the
+ * knowledge base's order. I left out embeddings and LLM ranking on purpose:
+ * the same situation always gives the same knowledge, so two runs can be
+ * compared.
  */
 export function retrieve(
   kb: KnowledgeSection[],
@@ -115,17 +118,30 @@ export function retrieve(
   limit = 6,
 ): { core: KnowledgeSection[]; selected: KnowledgeSection[]; scores: number[] } {
   const core = kb.filter((s) => s.tags.includes("core"));
-  const scored = kb
-    .map((s, i) => {
-      const shared = s.tags.filter((t) => situation.tags.includes(t));
-      const score = shared.reduce((sum, t) => sum + (situation.urgent.includes(t) ? 4 : 2), 0);
-      return { s, i, score };
-    })
-    .filter((e) => !e.s.tags.includes("core") && e.score > 0)
-    .filter((e) => e.s.when.includes(phase) || e.s.when.includes("any"))
-    .sort((a, b) => b.score - a.score || a.i - b.i)
-    .slice(0, limit);
-  return { core, selected: scored.map((e) => e.s), scores: scored.map((e) => e.score) };
+  const pool = kb.filter(
+    (s) => !s.tags.includes("core") && (s.when.includes(phase) || s.when.includes("any")),
+  );
+  const covered = new Map<string, number>();
+  const selected: KnowledgeSection[] = [];
+  const scores: number[] = [];
+  const score = (s: KnowledgeSection) =>
+    s.tags
+      .filter((t) => situation.tags.includes(t))
+      .reduce((sum, t) => sum + (situation.urgent.includes(t) ? 4 : 2) / (1 + (covered.get(t) ?? 0)), 0);
+  while (selected.length < limit) {
+    let best: KnowledgeSection | null = null;
+    let bestScore = 0;
+    for (const s of pool) {
+      if (selected.includes(s)) continue;
+      const v = score(s);
+      if (v > bestScore + 1e-9) [best, bestScore] = [s, v];
+    }
+    if (best === null) break;
+    selected.push(best);
+    scores.push(Math.round(bestScore * 100) / 100);
+    for (const t of best.tags) if (situation.tags.includes(t)) covered.set(t, (covered.get(t) ?? 0) + 1);
+  }
+  return { core, selected, scores };
 }
 
 /** A section as the LLM reads it: facts and strategies are labelled differently. */

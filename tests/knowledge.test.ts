@@ -50,6 +50,13 @@ describe("knowledge base", () => {
     expect(full).toContain(KEEP);
     expect(rank(full)).toBeLessThan(rank(calm));
   });
+
+  it("covers several topics instead of piling up one", () => {
+    const { selected } = retrieve(kb, { tags: ["attack", "tribes", "nations", "diplomacy", "troops"], urgent: ["diplomacy", "troops"] }, "mid");
+    const diplomacyOnly = selected.filter((s) => s.tags.includes("diplomacy") && !s.tags.some((t) => ["troops", "attack", "tribes"].includes(t)));
+    expect(diplomacyOnly.length).toBeLessThanOrEqual(2);
+    expect(selected.map((s) => s.title)).toContain("Keep troops near 40% of the cap");
+  });
 });
 
 /** Numbers stated as facts in knowledge/*.md, checked against the engine. */
