@@ -35,8 +35,8 @@ export function strategistSystem(core: KnowledgeSection[]): string {
     "You also get excerpts from a knowledge base. [fact] excerpts are verified game mechanics. [strategy idea] excerpts are ideas to weigh against the situation, not rules: use them when they fit.",
     "",
     "Answer with a JSON object:",
-    '- "assessment": one or two sentences on the situation: the main threat and the main opportunity.',
-    '- "plan": what to do for the next 30 seconds, in one to three short sentences. Be concrete: name the target and the share of your troops to send, as a percentage (for example "attack Fijian Territory with 30% of the troops").',
+    '- "assessment": one or two sentences (at most 400 characters) on the situation: the main threat and the main opportunity.',
+    '- "plan": what to do for the next 30 seconds, in one to three short sentences (at most 600 characters). Be concrete: name the target and the share of your troops to send, as a percentage (for example "attack Fijian Territory with 30% of the troops").',
     `- "priorities": one to three of ${PRIORITIES.join(", ")}, most important first.`,
     '- "focus": the one player that matters most right now (to attack or to watch), "unclaimed", or "none".',
     '- "knowledge_used": the titles of the knowledge excerpts your plan relies on (up to three).',
@@ -67,8 +67,10 @@ export function strategistSchema(focusOptions: string[], titles: string[]): Reco
   return {
     type: "object",
     properties: {
-      assessment: { type: "string" },
-      plan: { type: "string" },
+      // LM Studio enforces maxLength while decoding. I added these after an answer
+      // grew until the token limit and its JSON never closed (notebook 8, lesson 6).
+      assessment: { type: "string", maxLength: 400 },
+      plan: { type: "string", maxLength: 600 },
       priorities: { type: "array", items: { type: "string", enum: [...PRIORITIES] }, minItems: 1, maxItems: 3 },
       focus: { type: "string", enum: focusOptions },
       knowledge_used: { type: "array", items: { type: "string", enum: titles.length > 0 ? titles : ["none"] }, maxItems: 3 },
@@ -90,7 +92,7 @@ export function commanderSystem(core: KnowledgeSection[], maxActions: number, ma
     coreRules(core),
     "",
     "Answer with a JSON object:",
-    '- "reason": one short sentence: why these orders.',
+    '- "reason": one short sentence (at most 240 characters): why these orders.',
     `- "actions": 0 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
     "  For options marked [sends troops], choose troops_percent from the plan and the situation: 20-30 is a normal expansion wave, 40-60 a serious attack. For all other options put 0.",
     `  All orders of a turn draw on the same army: 30% + 30% sends 60% of it. At most ${maxTroopsPercent}% of your troops can leave in one turn; larger requests are scaled down.`,
@@ -128,7 +130,7 @@ export function commanderSchema(menu: MenuOption[], maxActions: number): Record<
   return {
     type: "object",
     properties: {
-      reason: { type: "string" },
+      reason: { type: "string", maxLength: 240 },
       actions: {
         type: "array",
         items: {
