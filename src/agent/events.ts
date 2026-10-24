@@ -26,6 +26,12 @@ export function diffEvents(prev: Snapshot | null, now: Snapshot): GameEvent[] {
       major: lostShare > 0.05,
     });
   }
+  if (prev.me.bordersUnclaimed && !now.me.bordersUnclaimed) {
+    events.push({ text: "No unclaimed land touches you any more: expansion is over, only attacks (or boats) can grow your land now.", major: true });
+  }
+  if (prev.me.troopsPctOfCap < 95 && now.me.troopsPctOfCap >= 95) {
+    events.push({ text: `Your troops reached ${now.me.troopsPctOfCap}% of your maximum: they no longer grow until you use them.`, major: true });
+  }
   const before = new Set(prev.me.incomingAttacks.map((a) => a.from));
   for (const a of now.me.incomingAttacks) {
     if (!before.has(a.from)) events.push({ text: `${name(a.from)} started attacking you with ${fmt(a.troops)} troops.`, major: true });

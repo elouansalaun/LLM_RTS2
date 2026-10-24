@@ -37,6 +37,8 @@ export interface MeView extends PlayerView {
   troopsPctOfCap: number;
   rank: number;
   coastal: boolean;
+  /** Whether unclaimed land still touches our territory (expansion is possible). */
+  bordersUnclaimed: boolean;
   incomingAttacks: { from: string; troops: number }[];
   outgoingAttacks: { to: string; troops: number }[];
   boatsAtSea: number;
@@ -111,6 +113,7 @@ export function observe(g: OpenFrontGame): Snapshot {
     troopsPctOfCap: cap > 0 ? Math.round((100 * me.troops()) / cap) : 0,
     rank: 1 + others.filter((o) => o.tiles > me.numTilesOwned()).length,
     coastal: hasShore(game, me),
+    bordersUnclaimed: me.isAlive() && me.sharesBorderWith(game.terraNullius()),
     incomingAttacks: me.incomingAttacks().map((a) => ({ from: nameOf(a.attacker()), troops: Math.round(a.troops()) })),
     outgoingAttacks: me.outgoingAttacks().map((a) => ({ to: nameOf(a.target()), troops: Math.round(a.troops()) })),
     boatsAtSea: me.units(UnitType.TransportShip).length,

@@ -104,6 +104,8 @@ const CommanderAnswer = z.object({
 export class LLMPlayer {
   plan: Plan | null = null;
   private core: KnowledgeSection[];
+  /** Events since the last plan: the strategist reads them all, not only the last turn's. */
+  private sincePlan: string[] = [];
 
   constructor(
     readonly llm: LLM,
@@ -121,6 +123,7 @@ export class LLMPlayer {
     events: GameEvent[];
   }): Promise<Turn> {
     const { snap, menu } = input;
+    this.sincePlan.push(...input.events.map((e) => e.text));
     const trigger = this.strategistTrigger(snap, input.events);
     const strategist = trigger === null ? null : await this.runStrategist(trigger, input);
     const commander = await this.runCommander(input);
@@ -156,7 +159,7 @@ export class LLMPlayer {
       system: strategistSystem(this.core),
       user: strategistUser({
         situation: input.situation,
-        events: input.events.map((e) => e.text),
+        events: this.sincePlan.slice(-12),
         previous: this.plan,
         knowledge,
         ...(snap.spawnPhase ? { spawnOptions: input.menu } : {}),
@@ -168,6 +171,7 @@ export class LLMPlayer {
     const parsed = StrategistAnswer.safeParse(call.answer);
     if (parsed.success) {
       this.plan = { ...parsed.data, priorities: parsed.data.priorities.slice(0, 3), seconds: snap.seconds };
+      this.sincePlan = [];
     } else if (this.plan === null) {
       // No usable plan yet: start from a neutral default rather than nothing.
       this.plan = {
