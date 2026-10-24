@@ -4,7 +4,7 @@ import type { Intent } from "@openfront/engine-api/Schemas";
 import { getSpawnTiles } from "@openfront/engine/execution/Util";
 import type { Game, Player } from "@openfront/engine/game/Game";
 import type { OpenFrontGame } from "../engine/game";
-import { fmt, Graph, neighboursOf, UNCLAIMED } from "../state/graph";
+import { fmt, Graph, neighboursOf, strength, UNCLAIMED } from "../state/graph";
 import { directionFrom, playerKeys, regionOf, Snapshot } from "../state/observe";
 
 /**
@@ -59,7 +59,9 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
     if (p === undefined || me.isFriendly(p) || !me.canAttackPlayer(p)) continue;
     options.push({
       id: `attack_${n.key}`,
-      label: `attack ${p.displayName()} (${kindLabel(p)}, ${fmt(p.troops())} troops) over your ${n.border}-tile border`,
+      label:
+        `attack ${p.displayName()} (${kindLabel(p)}, ${fmt(p.troops())} troops, ${strength(p.troops() / Math.max(1, me.troops()))}) ` +
+        `over your ${n.border}-tile border`,
       usesTroops: true,
       toIntent: (pct) => ({ type: "attack", targetID: p.id(), troops: troops(pct) }),
     });

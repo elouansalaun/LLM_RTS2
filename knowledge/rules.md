@@ -4,6 +4,7 @@
 <!-- type: fact; tags: core; when: any; source: WinCheckExecution, AttackExecution, Config.troopIncreaseRate -->
 - You win by holding more than 80% of the land. You are eliminated when you hold no land.
 - An attack targets one player (or unclaimed land) and advances along your whole shared border with them. The troops you send leave your reserve. Attacks keep running on their own until their troops are spent: you do not need to repeat an order.
+- Defending needs no order: the troops you keep at home defend all your land. The more troops you keep, the more each tile costs an attacker and the slower it advances. Sending troops away to attack weakens your defense; a counter-attack only helps against an attacker you can outnumber.
 - Troops regenerate every tick, fastest at about 40% of your troop cap. The cap grows with territory and with cities.
 - Gold accrues every tick. Cities raise the troop cap, ports earn trade gold, defense posts make nearby borders much harder to take. A first city costs 125,000 gold, a first defense post 50,000 (each further one costs more).
 - Allies cannot attack each other. Boats carry troops over water to a coastal tile.
