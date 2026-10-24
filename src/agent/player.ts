@@ -249,10 +249,13 @@ export class LLMPlayer {
         intent: option.toIntent(final),
       });
     }
-    // The game cannot start without a spawn: fall back to the first candidate.
+    // The game cannot start without a spawn: fall back to the start the plan
+    // names ("spawn_7"), else to the first candidate.
     if (snap.spawnPhase && !orders.some((o) => o.id.startsWith("spawn_")) && menu.length > 0) {
+      const named = /spawn_\d+/.exec(this.plan?.plan ?? "")?.[0];
+      const pick = menu.find((o) => o.id === named) ?? menu[0];
       orders.length = 0;
-      orders.push({ id: menu[0].id, troopsPercent: 0, label: `${menu[0].label} (fallback)`, intent: menu[0].toIntent(0) });
+      orders.push({ id: pick.id, troopsPercent: 0, label: `${pick.label} (fallback)`, intent: pick.toIntent(0) });
     }
     return orders;
   }

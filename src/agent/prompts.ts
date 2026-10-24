@@ -93,10 +93,10 @@ export function commanderSystem(core: KnowledgeSection[], maxActions: number, ma
     "",
     "Answer with a JSON object:",
     '- "reason": one short sentence (at most 240 characters): why these orders.',
-    `- "actions": 0 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
+    `- "actions": 1 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
     "  For options marked [sends troops], choose troops_percent from the plan and the situation: 20-30 is a normal expansion wave, 40-60 a serious attack. For all other options put 0.",
     `  All orders of a turn draw on the same army: 30% + 30% sends 60% of it. At most ${maxTroopsPercent}% of your troops can leave in one turn; larger requests are scaled down.`,
-    "Running attacks continue on their own: only repeat one to send more troops. Choosing nothing (or \"wait\") is fine when the running orders already follow the plan.",
+    "Running attacks continue on their own: only repeat one to send more troops. Choose \"wait\" when the running orders already follow the plan.",
   ].join("\n");
 }
 
@@ -142,6 +142,8 @@ export function commanderSchema(menu: MenuOption[], maxActions: number): Record<
           required: ["id", "troops_percent"],
           additionalProperties: false,
         },
+        // At least one order: "wait" is the explicit way to do nothing.
+        minItems: 1,
         maxItems: maxActions,
       },
     },
