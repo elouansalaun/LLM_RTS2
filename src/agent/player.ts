@@ -132,7 +132,8 @@ export class LLMPlayer {
 
   private strategistTrigger(snap: Snapshot, events: GameEvent[]): string | null {
     if (this.plan === null) return snap.spawnPhase ? "choosing a start" : "first plan";
-    const age = snap.seconds - this.plan.seconds;
+    // Rounded: game time advances in 0.1 s ticks, and 90.6 - 60.6 is not exactly 30 in floating point.
+    const age = Math.round((snap.seconds - this.plan.seconds) * 10) / 10;
     if (age >= this.settings.strategistEverySeconds) return "scheduled";
     const major = events.find((e) => e.major);
     if (major !== undefined && age >= this.settings.replanAfterSeconds) return `event: ${major.text}`;

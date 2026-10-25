@@ -43,6 +43,15 @@ describe("the LLM player", () => {
     expect(turn.commander.user).toContain("attack with everything");
   });
 
+  it("re-plans exactly every 30 s of game time (no floating-point drift)", async () => {
+    const p = await position();
+    const agent = player(new ScriptedLLM([{ id: "wait", troops_percent: 0 }]));
+    const turn = (seconds: number) => agent.takeTurn({ ...p, snap: { ...p.snap, seconds }, events: [] });
+    expect((await turn(60.6)).strategist?.trigger).toBe("first plan");
+    expect((await turn(85.6)).strategist).toBeNull();
+    expect((await turn(90.6)).strategist?.trigger).toBe("scheduled"); // 90.6 - 60.6 = 29.999… in floating point
+  });
+
   it("turns menu ids into engine orders and drops unknown or repeated ids", async () => {
     const p = await position();
     const turn = await player(
