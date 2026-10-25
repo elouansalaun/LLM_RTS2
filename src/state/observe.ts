@@ -35,6 +35,10 @@ export interface MeView extends PlayerView {
   spawned: boolean;
   troopCap: number;
   troopsPctOfCap: number;
+  /** Troops gained per second now (the engine's own growth rate). */
+  growthPerSecond: number;
+  /** Troops that would be gained per second at 40% of the cap, where growth is close to its peak. */
+  growthAt40PerSecond: number;
   rank: number;
   coastal: boolean;
   /** Whether unclaimed land still touches our territory (expansion is possible). */
@@ -111,6 +115,9 @@ export function observe(g: OpenFrontGame): Snapshot {
     spawned: me.hasSpawned(),
     troopCap: Math.round(cap),
     troopsPctOfCap: cap > 0 ? Math.round((100 * me.troops()) / cap) : 0,
+    growthPerSecond: Math.round(game.config().troopIncreaseRate(me) * 10),
+    // Same formula as Config.troopIncreaseRate for a human player, at troops = 40% of the cap.
+    growthAt40PerSecond: Math.round((10 + (0.4 * cap) ** 0.73 / 4) * 0.6 * 10),
     rank: 1 + others.filter((o) => o.tiles > me.numTilesOwned()).length,
     coastal: hasShore(game, me),
     bordersUnclaimed: me.isAlive() && me.sharesBorderWith(game.terraNullius()),

@@ -95,6 +95,9 @@ export function describeSituation(snap: Snapshot, graph: Graph): string {
       `${fmt(me.troops)} troops = ${me.troopsPctOfCap}% of your maximum of ${fmt(me.troopCap)} (${reserveHint(me.troopsPctOfCap)}), ${fmt(me.gold)} gold, ` +
       `${count(me.cities, "city", "cities")}, ${count(me.ports, "port")}, ${count(me.defensePosts, "defense post")}` +
       `${me.coastal ? ", coastal" : ", no coast"}.`,
+    // The model once sat at 0-1% of its cap for 90 s while quoting "keep troops near
+    // 40%". The rule alone wasn't enough, so I spell out the growth it gives up.
+    `Troop growth: +${fmt(me.growthPerSecond)} per second now; it would be +${fmt(me.growthAt40PerSecond)} per second at 40% of your maximum.`,
     `Unclaimed land: ${snap.unclaimedPct}% of the map.`,
   );
   if (me.incomingAttacks.length > 0) {
