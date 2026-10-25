@@ -43,13 +43,23 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
   const troops = (percent: number) => Math.max(1, Math.floor((me.troops() * percent) / 100));
   const options: MenuOption[] = [WAIT];
 
+  // Troops already on the way, per target: re-sending an order adds to them.
+  const running = new Map<string, number>();
+  for (const a of me.outgoingAttacks()) {
+    const t = a.target();
+    const key = t.isPlayer() ? keys.get((t as Player).id())! : UNCLAIMED;
+    running.set(key, (running.get(key) ?? 0) + a.troops());
+  }
+  const already = (key: string, what: string) =>
+    running.has(key) ? `; ${what} is already running with ${fmt(running.get(key)!)} troops: this adds more` : "";
+
   // ── land attacks: one per neighbour on the graph ──
   const neighbours = neighboursOf(graph, snap.me.key);
   for (const n of neighbours) {
     if (n.key === UNCLAIMED) {
       options.push({
         id: "expand",
-        label: `expand into unclaimed land (border ${n.border} tiles)`,
+        label: `expand into unclaimed land (border ${n.border} tiles)${already(UNCLAIMED, "an expansion")}`,
         usesTroops: true,
         toIntent: (pct) => ({ type: "attack", targetID: null, troops: troops(pct) }),
       });
@@ -61,7 +71,7 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
       id: `attack_${n.key}`,
       label:
         `attack ${p.displayName()} (${kindLabel(p)}, ${fmt(p.troops())} troops, ${strength(p.troops() / Math.max(1, me.troops()))}) ` +
-        `over your ${n.border}-tile border`,
+        `over your ${n.border}-tile border${already(n.key, "an attack on them")}`,
       usesTroops: true,
       toIntent: (pct) => ({ type: "attack", targetID: p.id(), troops: troops(pct) }),
     });
@@ -117,12 +127,17 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
       toIntent: () => ({ type: "allianceRequest", recipient: p.id() }),
     });
   }
-  // I only offer alliances to nations. Tribes accept every request, but an
-  // allied tribe can no longer be attacked, and in my first test games the
-  // model kept allying with the tribes it should have been conquering.
+  // I only offer alliances with nations that border us or attack us. Tribes
+  // accept every request, but an allied tribe can no longer be attacked, and in
+  // my first test games the model kept allying with the tribes it should have
+  // been conquering. When I offered every nation, it sent 15 proposals in
+  // 2 minutes, mostly to nations far away.
+  const bordering = new Set(neighbours.map((n) => n.key));
+  const attackers = new Set(snap.me.incomingAttacks.map((a) => a.from));
   for (const p of game.players()) {
     const key = keys.get(p.id())!;
     if (p === me || p.type() === PlayerType.Bot || me.isAlliedWith(p)) continue;
+    if (!bordering.has(key) && !attackers.has(key)) continue;
     if (snap.me.allianceRequests.includes(key) || !me.canSendAllianceRequest(p)) continue;
     options.push({
       id: `ally_${key}`,
