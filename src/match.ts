@@ -95,14 +95,14 @@ export async function playMatch(
     if (turn.strategist !== null) {
       log(`[${clock(snap.seconds)}] strategist (${turn.strategist.trigger}, ${(turn.strategist.ms / 1000).toFixed(1)}s): ${turn.strategist.plan.plan}`);
     }
-    const orders = turn.orders.map((o) =>
-      o.intent?.type === "attack" || o.intent?.type === "boat"
-        ? `${o.id} ${o.troopsPercent}%${o.requestedPercent !== undefined ? ` (asked ${o.requestedPercent}%)` : ""}`
-        : o.id,
-    );
+    const orders = turn.orders.map((o) => {
+      const troops = o.intent?.type === "attack" || o.intent?.type === "boat";
+      const asked = o.requestedPercent !== undefined ? ` (asked ${o.requestedPercent}%, ${o.limitedBy})` : "";
+      return `${o.id}${troops ? ` ${o.troopsPercent}%` : ""}${asked}`;
+    });
     const where = snap.spawnPhase
       ? "start"
-      : `${snap.me.landPct.toFixed(1)}% land, #${snap.me.rank}/${snap.playersAlive}, ${Math.round(snap.me.troops / 1000)}k troops`;
+      : `${snap.me.landPct.toFixed(1)}% land, #${snap.me.rank}/${snap.playersAlive}, ${Math.round(snap.me.troops / 1000)}k troops (${snap.me.troopsPctOfCap}%)`;
     log(
       `[${clock(snap.seconds)}] ${where} │ ${orders.join(" + ") || "wait"} │ ` +
         `${(turn.commander.ms / 1000).toFixed(1)}s${turn.commander.error ? ` ERROR ${turn.commander.error}` : ""}`,

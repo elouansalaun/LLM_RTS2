@@ -32,6 +32,7 @@ export function writeReport(
     `| Opponents | ${s.nations === "default" ? "all nations of the map" : `${s.nations} nations`}, ${s.bots} tribes, ${s.difficulty} difficulty |`,
     `| Seed | \`${s.seed}\` |`,
     `| Turns | commander every ${config.agent.decisionEverySeconds} s, strategist every ${config.agent.strategistEverySeconds} s or on major events |`,
+    `| Troop rules | reserve chosen by the plan (at least ${config.agent.minReservePercent}% of the maximum), at most ${config.agent.troopBudgetPercent}% of the army per ${config.agent.troopBudgetWindowSeconds} s |`,
     "",
   );
 
@@ -76,15 +77,24 @@ export function writeReport(
   }
 
   const counts = new Map<string, number>();
+  let reduced = 0;
   for (const r of playing) {
-    if (r.orders.length === 0) counts.set("(no order)", (counts.get("(no order)") ?? 0) + 1);
     for (const o of r.orders) {
       // attack_queensland -> attack, but build_city stays build_city.
       const kind = o.id.startsWith("build_") ? o.id : o.id.replace(/_.*$/, "");
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
+      if (o.requestedPercent !== undefined) reduced++;
     }
   }
-  lines.push("", "## Orders given by the commander", "", "| Order | Count |", "|---|---:|");
+  lines.push(
+    "",
+    "## Orders given by the commander",
+    "",
+    `The troop rules reduced ${reduced} of them.`,
+    "",
+    "| Order | Count |",
+    "|---|---:|",
+  );
   for (const [k, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) lines.push(`| ${k} | ${n} |`);
 
   const used = new Map<string, number>();

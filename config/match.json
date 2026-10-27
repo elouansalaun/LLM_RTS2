@@ -13,7 +13,9 @@
     "strategistEverySeconds": 30,
     "maxActions": 2,
     "knowledgeSections": 6,
-    "maxTroopsPercentPerTurn": 60
+    "troopBudgetPercent": 60,
+    "troopBudgetWindowSeconds": 5,
+    "minReservePercent": 25
   },
   "llm": {
     "baseURL": "http://localhost:1234/v1",

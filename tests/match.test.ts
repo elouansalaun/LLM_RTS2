@@ -23,8 +23,9 @@ describe("a full match with a stand-in LLM", () => {
     const plans = turns.filter((t) => t.strategist !== null).length;
     expect(plans).toBeGreaterThan(2);
     expect(plans).toBeLessThan(turns.length / 2);
-    // Prompts carry the graph and the knowledge base.
-    expect(turns[1].strategist?.user ?? turns[1].commander.user).toContain("Your land neighbours");
+    // Prompts carry the graph, the troop rules and the knowledge base.
+    expect(turns[1].commander.user).toContain("Your land neighbours");
+    expect(turns[1].commander.user).toContain("## Troop rules now");
     expect(turns.find((t) => t.strategist && t.seconds > 0)!.strategist!.user).toContain("## Knowledge base excerpts");
     for (const f of ["report.md", "summary.json", "final.png", "map-01min.png"]) expect(fs.existsSync(path.join(out, f)), f).toBe(true);
     expect(fs.readFileSync(path.join(out, "report.md"), "utf8")).toContain("## The strategist's plans");

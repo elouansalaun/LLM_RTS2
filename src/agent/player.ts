@@ -12,9 +12,11 @@ import {
   commanderUser,
   Plan,
   PRIORITIES,
+  RESERVE_PERCENTS,
   strategistSchema,
   strategistSystem,
   strategistUser,
+  TroopRules,
 } from "./prompts";
 
 export const AgentSettingsSchema = z.object({
@@ -29,12 +31,20 @@ export const AgentSettingsSchema = z.object({
   /** Knowledge sections given to the strategist, besides the core rules. */
   knowledgeSections: z.number().int().min(0).max(20).default(6),
   /**
-   * Safety rule: the orders of one turn never send more than this share of the
-   * troops in total; larger requests are scaled down. In my test games the
-   * model sent 40% + 50% into two wars in the same turn, against its own plan.
-   * 100 disables the rule.
+   * Troop budget: at most this share of the army leaves per window of game
+   * time, counted across turns, so the decision cadence does not change it.
+   * I first had a per-turn limit, and at a 1-second cadence it drained the
+   * army in 10 s.
    */
-  maxTroopsPercentPerTurn: z.number().min(10).max(100).default(60),
+  troopBudgetPercent: z.number().min(10).max(100).default(60),
+  troopBudgetWindowSeconds: z.number().positive().default(5),
+  /**
+   * Reserve floor: the lowest reserve the strategist may choose, as a share of
+   * the troop maximum. Troop orders never take the army below the plan's
+   * reserve. I added it because the model kept citing "keep troops near 40%"
+   * while sitting at 0%.
+   */
+  minReservePercent: z.number().min(0).max(60).default(25),
 });
 export type AgentSettings = z.output<typeof AgentSettingsSchema>;
 
@@ -58,11 +68,15 @@ export interface StrategistTurn extends LLMCall {
   plan: Plan;
 }
 
+export type CommanderCall = LLMCall & { reason: string };
+
 export interface Order {
   id: string;
   troopsPercent: number;
-  /** What the model asked for, when the safety rule scaled it down. */
+  /** What was asked, when the troop rules reduced it. */
   requestedPercent?: number;
+  /** Which rule reduced it. */
+  limitedBy?: "reserve" | "budget";
   label: string;
   intent: Intent | null;
 }
@@ -71,7 +85,8 @@ export interface Turn {
   tick: number;
   seconds: number;
   strategist: StrategistTurn | null;
-  commander: LLMCall & { reason: string };
+  commander: CommanderCall;
+  rules: TroopRules & { budgetLeftPercent: number; reserveAllowsPercent: number };
   orders: Order[];
 }
 
@@ -80,6 +95,7 @@ const StrategistAnswer = z.object({
   plan: z.string(),
   priorities: z.array(z.enum(PRIORITIES)).min(1),
   focus: z.string(),
+  reserve_percent: z.number(),
   knowledge_used: z.array(z.string()),
 });
 
@@ -88,14 +104,21 @@ const CommanderAnswer = z.object({
   actions: z.array(z.object({ id: z.string(), troops_percent: z.number() })),
 });
 
+interface Chosen {
+  option: MenuOption;
+  pct: number;
+}
+
 /**
  * The LLM player: two roles played by the same local model.
  *
  * - The strategist runs rarely (every 30 s of game time, or on a major event).
  *   It reads the situation, the map graph and the knowledge base excerpts that
- *   match the situation, and writes a plan.
+ *   match the situation, and writes a plan: priorities, a focus and the
+ *   reserve to keep.
  * - The commander runs every turn (every 5 s). It reads the plan, the current
  *   situation and the menu of legal options, and picks up to 2 orders.
+ * - Every troop order respects the plan's reserve and a troop budget per 5 s.
  *
  * Splitting the work keeps each prompt short and focused, which matters for a
  * 9B model: the commander does not have to re-derive the strategy every turn,
@@ -104,8 +127,11 @@ const CommanderAnswer = z.object({
 export class LLMPlayer {
   plan: Plan | null = null;
   private core: KnowledgeSection[];
+  private reserves: number[];
   /** Events since the last plan: the strategist reads them all, not only the last turn's. */
   private sincePlan: string[] = [];
+  /** Troop shares sent recently, for the budget window. */
+  private sent: { seconds: number; percent: number }[] = [];
 
   constructor(
     readonly llm: LLM,
@@ -113,6 +139,8 @@ export class LLMPlayer {
     readonly settings: AgentSettings,
   ) {
     this.core = kb.filter((s) => s.tags.includes("core"));
+    const allowed = RESERVE_PERCENTS.filter((r) => r >= settings.minReservePercent);
+    this.reserves = allowed.length > 0 ? [...allowed] : [RESERVE_PERCENTS.at(-1)!];
   }
 
   async takeTurn(input: {
@@ -126,9 +154,13 @@ export class LLMPlayer {
     this.sincePlan.push(...input.events.map((e) => e.text));
     const trigger = this.strategistTrigger(snap, input.events);
     const strategist = trigger === null ? null : await this.runStrategist(trigger, input);
-    const commander = await this.runCommander(input);
-    return { tick: snap.tick, seconds: snap.seconds, strategist, commander, orders: this.orders(commander.answer, menu, snap) };
+    const rules = this.troopRules(snap);
+    const commander = await this.runCommander(input, rules);
+    const orders = this.applyRules(this.parse(commander.answer, menu), rules, snap, menu);
+    return { tick: snap.tick, seconds: snap.seconds, strategist, commander, rules, orders };
   }
+
+  // ── when each role runs ──
 
   private strategistTrigger(snap: Snapshot, events: GameEvent[]): string | null {
     if (this.plan === null) return snap.spawnPhase ? "choosing a start" : "first plan";
@@ -139,6 +171,61 @@ export class LLMPlayer {
     if (major !== undefined && age >= this.settings.replanAfterSeconds) return `event: ${major.text}`;
     return null;
   }
+
+  // ── the troop rules ──
+
+  /** How many troops may leave now: the plan's reserve and the budget window, whichever is tighter. */
+  private troopRules(snap: Snapshot): Turn["rules"] {
+    const reservePercent = Math.max(this.settings.minReservePercent, this.plan?.reserve_percent ?? this.settings.minReservePercent);
+    const reserveTroops = (snap.me.troopCap * reservePercent) / 100;
+    const troops = snap.me.troops;
+    const reserveAllowsPercent = troops > 0 ? Math.max(0, Math.floor((100 * (troops - reserveTroops)) / troops)) : 0;
+    const windowStart = snap.seconds - this.settings.troopBudgetWindowSeconds;
+    this.sent = this.sent.filter((s) => s.seconds > windowStart + 0.01);
+    const budgetLeftPercent = Math.max(0, this.settings.troopBudgetPercent - this.sent.reduce((n, s) => n + s.percent, 0));
+    const allowedPercent = Math.min(reserveAllowsPercent, budgetLeftPercent);
+    return {
+      reservePercent,
+      reserveTroops: Math.round(reserveTroops),
+      allowedPercent,
+      allowedTroops: Math.round((troops * allowedPercent) / 100),
+      budgetLeftPercent,
+      reserveAllowsPercent,
+    };
+  }
+
+  /** Applies the troop rules to all orders together, then records what left. */
+  private applyRules(chosen: Chosen[], rules: Turn["rules"], snap: Snapshot, menu: MenuOption[]): Order[] {
+    const asked = troopTotal(chosen);
+    const scale = asked > rules.allowedPercent ? rules.allowedPercent / asked : 1;
+    const limitedBy = rules.reserveAllowsPercent <= rules.budgetLeftPercent ? "reserve" : "budget";
+    const orders: Order[] = [];
+    for (const { option, pct } of chosen) {
+      const final = option.usesTroops ? Math.floor(pct * scale) : 0;
+      if (option.usesTroops && final < 1) continue; // nothing may leave: the order is dropped
+      orders.push({
+        id: option.id,
+        troopsPercent: final,
+        ...(option.usesTroops && final !== pct ? { requestedPercent: pct, limitedBy } : {}),
+        label: option.label,
+        intent: option.toIntent(final),
+      });
+    }
+    const sent = orders.reduce((n, o) => n + (sendsTroops(o) ? o.troopsPercent : 0), 0);
+    if (sent > 0) this.sent.push({ seconds: snap.seconds, percent: sent });
+
+    // The game cannot start without a spawn: fall back to the start the plan
+    // names ("spawn_7"), else to the first candidate.
+    if (snap.spawnPhase && !orders.some((o) => o.id.startsWith("spawn_")) && menu.length > 0) {
+      const named = /spawn_\d+/.exec(this.plan?.plan ?? "")?.[0];
+      const pick = menu.find((o) => o.id === named) ?? menu[0];
+      orders.length = 0;
+      orders.push({ id: pick.id, troopsPercent: 0, label: `${pick.label} (fallback)`, intent: pick.toIntent(0) });
+    }
+    return orders;
+  }
+
+  // ── the LLM calls ──
 
   private async runStrategist(
     trigger: string,
@@ -157,7 +244,7 @@ export class LLMPlayer {
       ]),
     ];
     const request: ChatRequest = {
-      system: strategistSystem(this.core),
+      system: strategistSystem(this.core, this.reserves),
       user: strategistUser({
         situation: input.situation,
         events: this.sincePlan.slice(-12),
@@ -165,13 +252,19 @@ export class LLMPlayer {
         knowledge,
         ...(snap.spawnPhase ? { spawnOptions: input.menu } : {}),
       }),
-      schema: strategistSchema(focus, knowledge.map((k) => k.title)),
+      schema: strategistSchema(focus, knowledge.map((k) => k.title), this.reserves),
       schemaName: "strategist_plan",
     };
     const call = await callWithRetry(this.llm, request);
     const parsed = StrategistAnswer.safeParse(call.answer);
     if (parsed.success) {
-      this.plan = { ...parsed.data, priorities: parsed.data.priorities.slice(0, 3), seconds: snap.seconds };
+      const d = parsed.data;
+      this.plan = {
+        ...d,
+        priorities: d.priorities.slice(0, 3),
+        reserve_percent: this.reserves.includes(d.reserve_percent) ? d.reserve_percent : this.reserves[0],
+        seconds: snap.seconds,
+      };
       this.sincePlan = [];
     } else if (this.plan === null) {
       // No usable plan yet: start from a neutral default rather than nothing.
@@ -180,6 +273,7 @@ export class LLMPlayer {
         plan: "Expand into unclaimed land and build a city when affordable.",
         priorities: ["expand", "economy"],
         focus: UNCLAIMED,
+        reserve_percent: this.reserves.find((r) => r >= 30) ?? this.reserves[0],
         knowledge_used: [],
         seconds: snap.seconds,
       };
@@ -196,19 +290,19 @@ export class LLMPlayer {
     };
   }
 
-  private async runCommander(input: {
-    menu: MenuOption[];
-    situation: string;
-    events: GameEvent[];
-  }): Promise<LLMCall & { reason: string }> {
+  private async runCommander(
+    input: { menu: MenuOption[]; situation: string; events: GameEvent[] },
+    rules: TroopRules,
+  ): Promise<CommanderCall> {
     const request: ChatRequest = {
-      system: commanderSystem(this.core, this.settings.maxActions, this.settings.maxTroopsPercentPerTurn),
+      system: commanderSystem(this.core, this.settings.maxActions),
       user: commanderUser({
         plan: this.plan,
         planKnowledge: this.kb.filter((s) => this.plan?.knowledge_used.includes(s.title)),
         situation: input.situation,
         events: input.events.map((e) => e.text),
         menu: input.menu,
+        rules,
       }),
       schema: commanderSchema(input.menu, this.settings.maxActions),
       schemaName: "commander_orders",
@@ -223,43 +317,28 @@ export class LLMPlayer {
     };
   }
 
-  /** Turns the commander's answer into engine orders, keeping only valid, distinct menu ids. */
-  private orders(answer: unknown, menu: MenuOption[], snap: Snapshot): Order[] {
+  /** The commander's answer as menu options, keeping only valid, distinct ids. */
+  private parse(answer: unknown, menu: MenuOption[]): Chosen[] {
     const parsed = CommanderAnswer.safeParse(answer);
     const byId = new Map(menu.map((o) => [o.id, o]));
-    const seen = new Set<string>();
-    const orders: Order[] = [];
-    const chosen: { option: MenuOption; pct: number }[] = [];
+    const chosen: Chosen[] = [];
     for (const a of parsed.success ? parsed.data.actions : []) {
       const option = byId.get(a.id);
-      if (option === undefined || seen.has(a.id) || chosen.length >= this.settings.maxActions) continue;
-      seen.add(a.id);
+      if (option === undefined || chosen.some((c) => c.option.id === a.id) || chosen.length >= this.settings.maxActions) continue;
       const valid = (TROOP_PERCENTS as readonly number[]).includes(a.troops_percent) && a.troops_percent > 0;
       chosen.push({ option, pct: option.usesTroops ? (valid ? a.troops_percent : DEFAULT_TROOP_PERCENT) : 0 });
     }
-    // All troop orders of a turn are computed on the same army: 40% + 50% sends 90% of it.
-    const total = chosen.reduce((sum, c) => sum + c.pct, 0);
-    const scale = total > this.settings.maxTroopsPercentPerTurn ? this.settings.maxTroopsPercentPerTurn / total : 1;
-    for (const { option, pct } of chosen) {
-      const final = Math.floor(pct * scale);
-      orders.push({
-        id: option.id,
-        troopsPercent: final,
-        ...(final !== pct ? { requestedPercent: pct } : {}),
-        label: option.label,
-        intent: option.toIntent(final),
-      });
-    }
-    // The game cannot start without a spawn: fall back to the start the plan
-    // names ("spawn_7"), else to the first candidate.
-    if (snap.spawnPhase && !orders.some((o) => o.id.startsWith("spawn_")) && menu.length > 0) {
-      const named = /spawn_\d+/.exec(this.plan?.plan ?? "")?.[0];
-      const pick = menu.find((o) => o.id === named) ?? menu[0];
-      orders.length = 0;
-      orders.push({ id: pick.id, troopsPercent: 0, label: `${pick.label} (fallback)`, intent: pick.toIntent(0) });
-    }
-    return orders;
+    return chosen;
   }
+}
+
+/** Whether an order sends troops (attacks, expansions and boats). */
+function sendsTroops(o: Order): boolean {
+  return o.intent?.type === "attack" || o.intent?.type === "boat";
+}
+
+function troopTotal(chosen: Chosen[]): number {
+  return chosen.reduce((n, c) => n + (c.option.usesTroops ? c.pct : 0), 0);
 }
 
 /** One retry: a local model occasionally times out or gets cut off mid-answer. */
