@@ -3,7 +3,8 @@ import type { ChatRequest, ChatResult, LLM } from "./lmstudio";
 /**
  * A stand-in for the LLM, for tests and dry runs without LM Studio. It answers
  * every request with a valid object built from the schema itself: the first
- * allowed value of every enum, preferring the option ids listed in `prefer`.
+ * allowed value of every enum (the first non-zero one for numbers), preferring
+ * the option ids listed in `prefer`.
  */
 export class MockLLM implements LLM {
   readonly name = "mock";
@@ -24,7 +25,8 @@ export class MockLLM implements LLM {
         const hit = values.find((v) => typeof v === "string" && v.startsWith(p));
         if (hit !== undefined) return hit;
       }
-      return values[0];
+      // Numbers: the first non-zero value (0 usually means "none").
+      return values.find((v) => typeof v === "number" && v !== 0) ?? values[0];
     }
     switch (schema.type) {
       case "object": {

@@ -5,6 +5,11 @@ export interface GameEvent {
   text: string;
   /** Major events make the strategist re-plan before the next scheduled time. */
   major: boolean;
+  /**
+   * Routine events (land gained, small losses, an expansion wave that ended)
+   * do not call the commander: the standing orders handle them.
+   */
+  routine?: boolean;
 }
 
 /**
@@ -24,6 +29,7 @@ export function diffEvents(prev: Snapshot | null, now: Snapshot): GameEvent[] {
     events.push({
       text: dTiles > 0 ? `You gained ${fmt(dTiles)} tiles.` : `You LOST ${fmt(-dTiles)} tiles.`,
       major: lostShare > 0.05,
+      routine: lostShare <= 0.05,
     });
   }
   if (prev.me.bordersUnclaimed && !now.me.bordersUnclaimed) {
@@ -40,7 +46,7 @@ export function diffEvents(prev: Snapshot | null, now: Snapshot): GameEvent[] {
   for (const from of before) if (!after.has(from)) events.push({ text: `${name(from)}'s attack on you ended.`, major: false });
   const mineAfter = new Set(now.me.outgoingAttacks.map((a) => a.to));
   for (const a of prev.me.outgoingAttacks) {
-    if (!mineAfter.has(a.to)) events.push({ text: `Your attack on ${name(a.to)} ended.`, major: false });
+    if (!mineAfter.has(a.to)) events.push({ text: `Your attack on ${name(a.to)} ended.`, major: false, routine: a.to === UNCLAIMED });
   }
   for (const key of now.me.allianceRequests) {
     if (!prev.me.allianceRequests.includes(key)) events.push({ text: `${name(key)} asks you for an alliance.`, major: false });

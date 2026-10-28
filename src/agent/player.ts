@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DEFAULT_TROOP_PERCENT, MenuOption, TROOP_PERCENTS } from "../actions/menu";
 import { KnowledgeSection, Phase, phaseOf, retrieve, situationTags } from "../knowledge/kb";
 import type { ChatRequest, ChatResult, LLM } from "../llm/lmstudio";
-import { Graph, neighboursOf, UNCLAIMED } from "../state/graph";
+import { clock, Graph, neighboursOf, UNCLAIMED } from "../state/graph";
 import type { Snapshot } from "../state/observe";
 import type { GameEvent } from "./events";
 import {
@@ -17,16 +17,17 @@ import {
   strategistSystem,
   strategistUser,
   TroopRules,
+  WAVE_PERCENTS,
 } from "./prompts";
 
 export const AgentSettingsSchema = z.object({
-  /** Game seconds between two commander turns. */
+  /** Game seconds between two turns (the code checks the game; the LLM is not always called). */
   decisionEverySeconds: z.number().positive().default(5),
   /** Game seconds between two scheduled strategist plans (major events re-plan sooner). */
   strategistEverySeconds: z.number().positive().default(30),
   /** A major event re-plans only if the current plan is at least this old (game seconds). */
   replanAfterSeconds: z.number().min(0).default(15),
-  /** Orders the commander may give per turn. */
+  /** Orders the commander may give per call. */
   maxActions: z.number().int().min(1).max(4).default(2),
   /** Knowledge sections given to the strategist, besides the core rules. */
   knowledgeSections: z.number().int().min(0).max(20).default(6),
@@ -45,6 +46,8 @@ export const AgentSettingsSchema = z.object({
    * while sitting at 0%.
    */
   minReservePercent: z.number().min(0).max(60).default(25),
+  /** The commander is called when something changes, and at least this often (game seconds). */
+  commanderHeartbeatSeconds: z.number().positive().default(15),
 });
 export type AgentSettings = z.output<typeof AgentSettingsSchema>;
 
@@ -70,6 +73,11 @@ export interface StrategistTurn extends LLMCall {
 
 export type CommanderCall = LLMCall & { reason: string };
 
+export interface CommanderTurn extends CommanderCall {
+  /** Why the commander was called this turn. */
+  why: string[];
+}
+
 export interface Order {
   id: string;
   troopsPercent: number;
@@ -77,6 +85,8 @@ export interface Order {
   requestedPercent?: number;
   /** Which rule reduced it. */
   limitedBy?: "reserve" | "budget";
+  /** Launched by the code from the plan (expansion waves), not by the commander. */
+  standing?: boolean;
   label: string;
   intent: Intent | null;
 }
@@ -85,7 +95,8 @@ export interface Turn {
   tick: number;
   seconds: number;
   strategist: StrategistTurn | null;
-  commander: CommanderCall;
+  /** null when nothing changed: no LLM call, the standing orders run. */
+  commander: CommanderTurn | null;
   rules: TroopRules & { budgetLeftPercent: number; reserveAllowsPercent: number };
   orders: Order[];
 }
@@ -96,6 +107,7 @@ const StrategistAnswer = z.object({
   priorities: z.array(z.enum(PRIORITIES)).min(1),
   focus: z.string(),
   reserve_percent: z.number(),
+  wave_percent: z.number(),
   knowledge_used: z.array(z.string()),
 });
 
@@ -107,31 +119,38 @@ const CommanderAnswer = z.object({
 interface Chosen {
   option: MenuOption;
   pct: number;
+  standing?: boolean;
 }
 
 /**
- * The LLM player: two roles played by the same local model.
+ * The LLM player: two roles played by the same local model, and the code
+ * that enforces the plan between their calls.
  *
  * - The strategist runs rarely (every 30 s of game time, or on a major event).
  *   It reads the situation, the map graph and the knowledge base excerpts that
- *   match the situation, and writes a plan: priorities, a focus and the
- *   reserve to keep.
- * - The commander runs every turn (every 5 s). It reads the plan, the current
- *   situation and the menu of legal options, and picks up to 2 orders.
- * - Every troop order respects the plan's reserve and a troop budget per 5 s.
+ *   match the situation, and writes a plan: priorities, a focus, the reserve
+ *   to keep and the size of the expansion waves.
+ * - The commander is called only when something changed (a new plan, an
+ *   attack, a new option on the menu) or every 15 s. It picks up to 2 orders.
+ * - Between calls, the code relaunches the plan's expansion waves, and every
+ *   troop order respects the plan's reserve and a troop budget per 5 s.
  *
- * Splitting the work keeps each prompt short and focused, which matters for a
- * 9B model: the commander does not have to re-derive the strategy every turn,
- * and the strategist does not have to deal with option ids.
+ * In my games the 9B model was decent at broad plans and bad at repeating
+ * small orders on time, so the model plans and the code does the repetition.
  */
 export class LLMPlayer {
   plan: Plan | null = null;
   private core: KnowledgeSection[];
   private reserves: number[];
-  /** Events since the last plan: the strategist reads them all, not only the last turn's. */
+  /** Events since the last plan / the last commander call. */
   private sincePlan: string[] = [];
+  private sinceCommander: string[] = [];
+  /** When the commander was last called, and the menu it saw then. */
+  private lastCommander: { seconds: number; menuIds: Set<string> } | null = null;
   /** Troop shares sent recently, for the budget window. */
   private sent: { seconds: number; percent: number }[] = [];
+  /** The last orders, as the commander reads them. */
+  private history: string[] = [];
 
   constructor(
     readonly llm: LLM,
@@ -152,11 +171,27 @@ export class LLMPlayer {
   }): Promise<Turn> {
     const { snap, menu } = input;
     this.sincePlan.push(...input.events.map((e) => e.text));
+    this.sinceCommander.push(...input.events.filter((e) => !e.routine).map((e) => e.text));
+
     const trigger = this.strategistTrigger(snap, input.events);
     const strategist = trigger === null ? null : await this.runStrategist(trigger, input);
     const rules = this.troopRules(snap);
-    const commander = await this.runCommander(input, rules);
-    const orders = this.applyRules(this.parse(commander.answer, menu), rules, snap, menu);
+
+    let commander: CommanderTurn | null = null;
+    let chosen: Chosen[] = [];
+    const why = this.commanderWhy(snap, input.events, menu, strategist !== null);
+    if (why.length > 0) {
+      const first = await this.runCommander(input, why, rules);
+      commander = { ...first, why };
+      chosen = this.parse(first.answer, menu);
+      this.lastCommander = { seconds: snap.seconds, menuIds: new Set(menu.map((o) => o.id)) };
+      this.sinceCommander = [];
+    }
+
+    chosen.push(...this.standingOrders(snap, menu, chosen));
+    const orders = this.applyRules(chosen, rules, snap, menu);
+    for (const o of orders) this.history.push(`${clock(snap.seconds)} ${describeOrder(o)}`);
+    this.history = this.history.slice(-5);
     return { tick: snap.tick, seconds: snap.seconds, strategist, commander, rules, orders };
   }
 
@@ -170,6 +205,21 @@ export class LLMPlayer {
     const major = events.find((e) => e.major);
     if (major !== undefined && age >= this.settings.replanAfterSeconds) return `event: ${major.text}`;
     return null;
+  }
+
+  /** Reasons to call the commander now; none means the standing orders are enough. */
+  private commanderWhy(snap: Snapshot, events: GameEvent[], menu: MenuOption[], newPlan: boolean): string[] {
+    if (snap.spawnPhase) return ["the game starts: choose where"];
+    if (this.lastCommander === null) return ["first orders"];
+    const why: string[] = [];
+    if (newPlan) why.push("a new plan");
+    for (const e of events.filter((x) => !x.routine).slice(0, 3)) why.push(e.text.replace(/\.$/, ""));
+    const seen = this.lastCommander.menuIds;
+    const fresh = menu.map((o) => o.id).filter((id) => id !== "wait" && !seen.has(id));
+    if (fresh.length > 0) why.push(`new options on the menu: ${fresh.slice(0, 4).join(", ")}`);
+    const silent = Math.round((snap.seconds - this.lastCommander.seconds) * 10) / 10;
+    if (why.length === 0 && silent >= this.settings.commanderHeartbeatSeconds) why.push("regular check");
+    return why;
   }
 
   // ── the troop rules ──
@@ -194,19 +244,29 @@ export class LLMPlayer {
     };
   }
 
+  /** The plan's standing order: one expansion wave at a time while unclaimed land touches us. */
+  private standingOrders(snap: Snapshot, menu: MenuOption[], chosen: Chosen[]): Chosen[] {
+    if (snap.spawnPhase || this.plan === null || this.plan.wave_percent <= 0) return [];
+    const expand = menu.find((o) => o.id === "expand");
+    if (expand === undefined || chosen.some((c) => c.option.id === "expand")) return [];
+    if (snap.me.outgoingAttacks.some((a) => a.to === UNCLAIMED)) return []; // a wave is still running
+    return [{ option: expand, pct: this.plan.wave_percent, standing: true }];
+  }
+
   /** Applies the troop rules to all orders together, then records what left. */
   private applyRules(chosen: Chosen[], rules: Turn["rules"], snap: Snapshot, menu: MenuOption[]): Order[] {
     const asked = troopTotal(chosen);
     const scale = asked > rules.allowedPercent ? rules.allowedPercent / asked : 1;
     const limitedBy = rules.reserveAllowsPercent <= rules.budgetLeftPercent ? "reserve" : "budget";
     const orders: Order[] = [];
-    for (const { option, pct } of chosen) {
+    for (const { option, pct, standing } of chosen) {
       const final = option.usesTroops ? Math.floor(pct * scale) : 0;
       if (option.usesTroops && final < 1) continue; // nothing may leave: the order is dropped
       orders.push({
         id: option.id,
         troopsPercent: final,
         ...(option.usesTroops && final !== pct ? { requestedPercent: pct, limitedBy } : {}),
+        ...(standing ? { standing: true } : {}),
         label: option.label,
         intent: option.toIntent(final),
       });
@@ -263,6 +323,7 @@ export class LLMPlayer {
         ...d,
         priorities: d.priorities.slice(0, 3),
         reserve_percent: this.reserves.includes(d.reserve_percent) ? d.reserve_percent : this.reserves[0],
+        wave_percent: (WAVE_PERCENTS as readonly number[]).includes(d.wave_percent) ? d.wave_percent : 30,
         seconds: snap.seconds,
       };
       this.sincePlan = [];
@@ -274,6 +335,7 @@ export class LLMPlayer {
         priorities: ["expand", "economy"],
         focus: UNCLAIMED,
         reserve_percent: this.reserves.find((r) => r >= 30) ?? this.reserves[0],
+        wave_percent: 30,
         knowledge_used: [],
         seconds: snap.seconds,
       };
@@ -291,7 +353,8 @@ export class LLMPlayer {
   }
 
   private async runCommander(
-    input: { menu: MenuOption[]; situation: string; events: GameEvent[] },
+    input: { menu: MenuOption[]; situation: string },
+    why: string[],
     rules: TroopRules,
   ): Promise<CommanderCall> {
     const request: ChatRequest = {
@@ -300,9 +363,11 @@ export class LLMPlayer {
         plan: this.plan,
         planKnowledge: this.kb.filter((s) => this.plan?.knowledge_used.includes(s.title)),
         situation: input.situation,
-        events: input.events.map((e) => e.text),
+        events: this.sinceCommander.slice(-10),
         menu: input.menu,
+        why,
         rules,
+        lastOrders: this.history,
       }),
       schema: commanderSchema(input.menu, this.settings.maxActions),
       schemaName: "commander_orders",
@@ -339,6 +404,15 @@ function sendsTroops(o: Order): boolean {
 
 function troopTotal(chosen: Chosen[]): number {
   return chosen.reduce((n, c) => n + (c.option.usesTroops ? c.pct : 0), 0);
+}
+
+function describeOrder(o: Order): string {
+  const troops = sendsTroops(o) ? ` ${o.troopsPercent}%` : "";
+  const notes = [
+    ...(o.standing ? ["standing order from the plan"] : []),
+    ...(o.requestedPercent !== undefined ? [`asked ${o.requestedPercent}%, reduced by the ${o.limitedBy}`] : []),
+  ];
+  return `${o.id}${troops}${notes.length > 0 ? ` (${notes.join("; ")})` : ""}`;
 }
 
 /** One retry: a local model occasionally times out or gets cut off mid-answer. */

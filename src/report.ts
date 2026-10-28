@@ -31,7 +31,7 @@ export function writeReport(
     `| Map | ${s.map} (${s.mapSize}) |`,
     `| Opponents | ${s.nations === "default" ? "all nations of the map" : `${s.nations} nations`}, ${s.bots} tribes, ${s.difficulty} difficulty |`,
     `| Seed | \`${s.seed}\` |`,
-    `| Turns | commander every ${config.agent.decisionEverySeconds} s, strategist every ${config.agent.strategistEverySeconds} s or on major events |`,
+    `| Turns | every ${config.agent.decisionEverySeconds} s; commander when something changes (at least every ${config.agent.commanderHeartbeatSeconds} s), strategist every ${config.agent.strategistEverySeconds} s or on major events |`,
     `| Troop rules | reserve chosen by the plan (at least ${config.agent.minReservePercent}% of the maximum), at most ${config.agent.troopBudgetPercent}% of the army per ${config.agent.troopBudgetWindowSeconds} s |`,
     "",
   );
@@ -80,17 +80,18 @@ export function writeReport(
   let reduced = 0;
   for (const r of playing) {
     for (const o of r.orders) {
-      // attack_queensland -> attack, but build_city stays build_city.
-      const kind = o.id.startsWith("build_") ? o.id : o.id.replace(/_.*$/, "");
+      // attack_queensland -> attack, but build_city stays build_city; waves launched by the code are separate.
+      const kind = o.standing ? "expand (automatic wave)" : o.id.startsWith("build_") ? o.id : o.id.replace(/_.*$/, "");
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
       if (o.requestedPercent !== undefined) reduced++;
     }
   }
+  const called = playing.filter((r) => r.commander !== null).length;
   lines.push(
     "",
-    "## Orders given by the commander",
+    "## Orders",
     "",
-    `The troop rules reduced ${reduced} of them.`,
+    `The commander was called on ${called} of ${playing.length} turns; the troop rules reduced ${reduced} orders.`,
     "",
     "| Order | Count |",
     "|---|---:|",
@@ -105,7 +106,7 @@ export function writeReport(
   }
 
   const calls: { role: string; c: LLMCall }[] = records.flatMap((r) => [
-    { role: "commander", c: r.commander as LLMCall },
+    ...(r.commander ? [{ role: "commander", c: r.commander as LLMCall }] : []),
     ...(r.strategist ? [{ role: "strategist", c: r.strategist as LLMCall }] : []),
   ]);
   lines.push("", "## LLM calls", "", "| Role | Calls | Mean latency | Median latency | Errors |", "|---|---:|---:|---:|---:|");

@@ -98,15 +98,19 @@ export async function playMatch(
     const orders = turn.orders.map((o) => {
       const troops = o.intent?.type === "attack" || o.intent?.type === "boat";
       const asked = o.requestedPercent !== undefined ? ` (asked ${o.requestedPercent}%, ${o.limitedBy})` : "";
-      return `${o.id}${troops ? ` ${o.troopsPercent}%` : ""}${asked}`;
+      return `${o.standing ? "auto-" : ""}${o.id}${troops ? ` ${o.troopsPercent}%` : ""}${asked}`;
     });
     const where = snap.spawnPhase
       ? "start"
       : `${snap.me.landPct.toFixed(1)}% land, #${snap.me.rank}/${snap.playersAlive}, ${Math.round(snap.me.troops / 1000)}k troops (${snap.me.troopsPctOfCap}%)`;
-    log(
-      `[${clock(snap.seconds)}] ${where} │ ${orders.join(" + ") || "wait"} │ ` +
-        `${(turn.commander.ms / 1000).toFixed(1)}s${turn.commander.error ? ` ERROR ${turn.commander.error}` : ""}`,
-    );
+    const c = turn.commander;
+    const llmPart =
+      c === null
+        ? "no LLM call"
+        : `${(c.ms / 1000).toFixed(1)}s${c.error ? ` ERROR ${c.error}` : ""}`;
+    // Quiet turns with nothing new are not printed, to keep the log readable at fast cadences.
+    if (c === null && turn.orders.length === 0) return;
+    log(`[${clock(snap.seconds)}] ${where} │ ${orders.join(" + ") || "wait"} │ ${llmPart}`);
   };
 
   // The engine adds every player on the first tick.
@@ -151,7 +155,10 @@ export async function playMatch(
   const winner = g.winner();
   const outcome: MatchResult["outcome"] =
     g.error !== null ? "engine error" : winner === g.me ? "won" : winner !== null ? "lost" : !snap.me.alive ? "eliminated" : "time limit";
-  const calls = records.flatMap((r) => [r.commander, ...(r.strategist ? [r.strategist] : [])]);
+  const calls = records.flatMap((r) => [
+    ...(r.commander ? [r.commander] : []),
+    ...(r.strategist ? [r.strategist] : []),
+  ]);
   const result: MatchResult = {
     outcome,
     winner: winner?.displayName() ?? null,

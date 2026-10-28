@@ -151,7 +151,7 @@ export function buildMenu(g: OpenFrontGame, snap: Snapshot, graph: Graph): MenuO
 
 const WAIT: MenuOption = {
   id: "wait",
-  label: "do nothing new (running attacks continue on their own)",
+  label: "do nothing new (running attacks and the plan's expansion waves continue on their own)",
   usesTroops: false,
   toIntent: () => null,
 };

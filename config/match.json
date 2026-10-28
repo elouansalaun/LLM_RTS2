@@ -15,7 +15,8 @@
     "knowledgeSections": 6,
     "troopBudgetPercent": 60,
     "troopBudgetWindowSeconds": 5,
-    "minReservePercent": 25
+    "minReservePercent": 25,
+    "commanderHeartbeatSeconds": 15
   },
   "llm": {
     "baseURL": "http://localhost:1234/v1",

@@ -3,24 +3,26 @@ import { buildMenu } from "../src/actions/menu";
 import { AgentSettingsSchema, LLMPlayer } from "../src/agent/player";
 import { loadKnowledge } from "../src/knowledge/kb";
 import type { ChatRequest, ChatResult, LLM } from "../src/llm/lmstudio";
-import { buildGraph, describeSituation } from "../src/state/graph";
+import { buildGraph, describeSituation, UNCLAIMED } from "../src/state/graph";
 import { observe, Snapshot } from "../src/state/observe";
 import { startedGame } from "./helpers";
 
 type Orders = { id: string; troops_percent: number }[];
 
-/** An LLM with fixed answers: one plan, and the same orders on every call. */
+/** An LLM with fixed answers: one plan, and orders that can change between calls. */
 class ScriptedLLM implements LLM {
   readonly name = "scripted";
+  commanderCalls = 0;
   constructor(
-    private orders: Orders,
-    private plan: { reserve_percent: number } = { reserve_percent: 25 },
+    private orders: Orders | (() => Orders),
+    private plan: { reserve_percent: number; wave_percent: number } = { reserve_percent: 25, wave_percent: 0 },
   ) {}
   async chat(request: ChatRequest): Promise<ChatResult> {
+    if (request.schemaName === "commander_orders") this.commanderCalls++;
     const json =
       request.schemaName === "strategist_plan"
         ? { assessment: "a", plan: "attack with everything", priorities: ["attack"], focus: "none", ...this.plan, knowledge_used: [] }
-        : { reason: "r", actions: this.orders };
+        : { reason: "r", actions: typeof this.orders === "function" ? this.orders() : this.orders };
     return { json, text: JSON.stringify(json), ms: 1, promptTokens: null, completionTokens: null };
   }
 }
@@ -45,8 +47,8 @@ describe("the LLM player", () => {
     const turn = await player(new ScriptedLLM([{ id: "wait", troops_percent: 0 }])).takeTurn({ ...p, events: [] });
     expect(turn.strategist?.trigger).toBe("first plan");
     expect(turn.strategist?.plan.plan).toBe("attack with everything");
-    expect(turn.commander.user).toContain("attack with everything");
-    expect(turn.commander.user).toContain("## Troop rules now");
+    expect(turn.commander!.user).toContain("attack with everything");
+    expect(turn.commander!.user).toContain("## Troop rules now");
   });
 
   it("re-plans exactly every 30 s of game time (no floating-point drift)", async () => {
@@ -73,6 +75,35 @@ describe("the LLM player", () => {
     expect(intent.troops).toBeCloseTo(p.g.me.troops() * 0.3, -1);
   });
 
+  it("calls the commander only when something changed, or as a regular check", async () => {
+    const p = await position();
+    const llm = new ScriptedLLM([{ id: "wait", troops_percent: 0 }]);
+    const agent = player(llm, { strategistEverySeconds: 1000 });
+    const at = (seconds: number, events: { text: string; major: boolean; routine?: boolean }[] = []) =>
+      agent.takeTurn({ ...p, snap: { ...p.snap, seconds }, events });
+    expect((await at(40)).commander?.why).toEqual(["first orders"]);
+    expect((await at(45, [{ text: "You gained 120 tiles.", major: false, routine: true }])).commander).toBeNull();
+    expect((await at(50, [{ text: "Queensland started attacking you with 9,000 troops.", major: true }])).commander?.why).toEqual([
+      "Queensland started attacking you with 9,000 troops",
+    ]);
+    expect((await at(60)).commander).toBeNull();
+    expect((await at(65)).commander?.why).toEqual(["regular check"]); // 15 s of silence
+    expect(llm.commanderCalls).toBe(3);
+  });
+
+  it("launches the plan's expansion waves when none is running", async () => {
+    const p = await position((s) => ({ ...s, me: { ...s.me, outgoingAttacks: [] } }));
+    const llm = new ScriptedLLM([{ id: "wait", troops_percent: 0 }], { reserve_percent: 25, wave_percent: 30 });
+    const turn = await player(llm).takeTurn({ ...p, events: [] });
+    const wave = turn.orders.find((o) => o.standing);
+    expect(wave?.id).toBe("expand");
+    expect(wave?.troopsPercent).toBe(30);
+
+    const busy = await position((s) => ({ ...s, me: { ...s.me, outgoingAttacks: [{ to: UNCLAIMED, troops: 5000 }] } }));
+    const second = await player(llm).takeTurn({ ...busy, events: [] });
+    expect(second.orders.some((o) => o.standing)).toBe(false);
+  });
+
   it("keeps the plan's reserve: orders never take the army below it", async () => {
     // 30% of the maximum at home, a 25% reserve: at most (30 - 25) / 30 = 16% may leave.
     const p = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.3) } }));
@@ -88,7 +119,7 @@ describe("the LLM player", () => {
 
   it("counts the troop budget across turns, whatever the cadence", async () => {
     const p = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.9) } }));
-    const agent = player(new ScriptedLLM([{ id: "expand", troops_percent: 40 }]));
+    const agent = player(new ScriptedLLM([{ id: "expand", troops_percent: 40 }]), { commanderHeartbeatSeconds: 1 });
     const at = (seconds: number) => agent.takeTurn({ ...p, snap: { ...p.snap, seconds }, events: [] });
     expect((await at(40)).orders[0].troopsPercent).toBe(40);
     expect((await at(41)).orders[0]).toMatchObject({ troopsPercent: 20, limitedBy: "budget" }); // 60 - 40 left

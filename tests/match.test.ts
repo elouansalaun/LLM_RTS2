@@ -23,9 +23,14 @@ describe("a full match with a stand-in LLM", () => {
     const plans = turns.filter((t) => t.strategist !== null).length;
     expect(plans).toBeGreaterThan(2);
     expect(plans).toBeLessThan(turns.length / 2);
+    // The commander is not called on every turn: quiet turns run the plan's standing orders.
+    const called = turns.filter((t) => t.commander !== null).length;
+    expect(called).toBeLessThan(turns.length);
+    expect(turns.some((t) => t.orders.some((o) => o.standing))).toBe(true);
     // Prompts carry the graph, the troop rules and the knowledge base.
-    expect(turns[1].commander.user).toContain("Your land neighbours");
-    expect(turns[1].commander.user).toContain("## Troop rules now");
+    const firstCommander = turns.slice(1).find((t) => t.commander !== null)!.commander!;
+    expect(firstCommander.user).toContain("Your land neighbours");
+    expect(firstCommander.user).toContain("## Troop rules now");
     expect(turns.find((t) => t.strategist && t.seconds > 0)!.strategist!.user).toContain("## Knowledge base excerpts");
     for (const f of ["report.md", "summary.json", "final.png", "map-01min.png"]) expect(fs.existsSync(path.join(out, f)), f).toBe(true);
     expect(fs.readFileSync(path.join(out, "report.md"), "utf8")).toContain("## The strategist's plans");
