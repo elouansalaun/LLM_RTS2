@@ -20,35 +20,38 @@ import {
   WAVE_PERCENTS,
 } from "./prompts";
 
-export const AgentSettingsSchema = z.object({
-  /** Game seconds between two turns (the code checks the game; the LLM is not always called). */
-  decisionEverySeconds: z.number().positive().default(5),
-  /** Game seconds between two scheduled strategist plans (major events re-plan sooner). */
-  strategistEverySeconds: z.number().positive().default(30),
-  /** A major event re-plans only if the current plan is at least this old (game seconds). */
-  replanAfterSeconds: z.number().min(0).default(15),
-  /** Orders the commander may give per call. */
-  maxActions: z.number().int().min(1).max(4).default(2),
-  /** Knowledge sections given to the strategist, besides the core rules. */
-  knowledgeSections: z.number().int().min(0).max(20).default(6),
-  /**
-   * Troop budget: at most this share of the army leaves per window of game
-   * time, counted across turns, so the decision cadence does not change it.
-   * I first had a per-turn limit, and at a 1-second cadence it drained the
-   * army in 10 s.
-   */
-  troopBudgetPercent: z.number().min(10).max(100).default(60),
-  troopBudgetWindowSeconds: z.number().positive().default(5),
-  /**
-   * Reserve floor: the lowest reserve the strategist may choose, as a share of
-   * the troop maximum. Troop orders never take the army below the plan's
-   * reserve. I added it because the model kept citing "keep troops near 40%"
-   * while sitting at 0%.
-   */
-  minReservePercent: z.number().min(0).max(60).default(25),
-  /** The commander is called when something changes, and at least this often (game seconds). */
-  commanderHeartbeatSeconds: z.number().positive().default(15),
-});
+export const AgentSettingsSchema = z
+  .object({
+    /** Game seconds between two turns (the code checks the game; the LLM is not always called). */
+    decisionEverySeconds: z.number().positive().default(5),
+    /** Game seconds between two scheduled strategist plans (major events re-plan sooner). */
+    strategistEverySeconds: z.number().positive().default(30),
+    /** A major event re-plans only if the current plan is at least this old (game seconds). */
+    replanAfterSeconds: z.number().min(0).default(15),
+    /** Orders the commander may give per call. */
+    maxActions: z.number().int().min(1).max(4).default(2),
+    /** Knowledge sections given to the strategist, besides the core rules. */
+    knowledgeSections: z.number().int().min(0).max(20).default(6),
+    /**
+     * Troop budget: at most this share of the army leaves per window of game
+     * time, counted across turns, so the decision cadence does not change it.
+     * I first had a per-turn limit, and at a 1-second cadence it drained the
+     * army in 10 s.
+     */
+    troopBudgetPercent: z.number().min(10).max(100).default(60),
+    troopBudgetWindowSeconds: z.number().positive().default(5),
+    /**
+     * Reserve floor: the lowest reserve the strategist may choose, as a share of
+     * the troop maximum. Troop orders never take the army below the plan's
+     * reserve. I added it because the model kept citing "keep troops near 40%"
+     * while sitting at 0%.
+     */
+    minReservePercent: z.number().min(0).max(60).default(25),
+    /** The commander is called when something changes, and at least this often (game seconds). */
+    commanderHeartbeatSeconds: z.number().positive().default(15),
+  })
+  // An event re-plan that waits longer than the scheduled plan can never fire.
+  .transform((s) => ({ ...s, replanAfterSeconds: Math.min(s.replanAfterSeconds, s.strategistEverySeconds) }));
 export type AgentSettings = z.output<typeof AgentSettingsSchema>;
 
 export interface LLMCall {

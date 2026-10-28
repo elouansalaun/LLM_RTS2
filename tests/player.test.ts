@@ -139,4 +139,8 @@ describe("the LLM player", () => {
     const turn = await player(new ScriptedLLM([{ id: "expand", troops_percent: 0 }])).takeTurn({ ...p, events: [] });
     expect(turn.orders[0].troopsPercent).toBe(20);
   });
+
+  it("never lets an event re-plan wait longer than the scheduled plan", () => {
+    expect(AgentSettingsSchema.parse({ strategistEverySeconds: 5, replanAfterSeconds: 15 }).replanAfterSeconds).toBe(5);
+  });
 });
