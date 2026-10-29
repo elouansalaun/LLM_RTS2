@@ -107,7 +107,7 @@ export async function playMatch(
     const llmPart =
       c === null
         ? "no LLM call"
-        : `${(c.ms / 1000).toFixed(1)}s${c.error ? ` ERROR ${c.error}` : ""}`;
+        : `${((c.ms + (c.revision?.ms ?? 0)) / 1000).toFixed(1)}s${c.revision ? " (revised)" : ""}${c.error ? ` ERROR ${c.error}` : ""}`;
     // Quiet turns with nothing new are not printed, to keep the log readable at fast cadences.
     if (c === null && turn.orders.length === 0) return;
     log(`[${clock(snap.seconds)}] ${where} │ ${orders.join(" + ") || "wait"} │ ${llmPart}`);
@@ -157,6 +157,7 @@ export async function playMatch(
     g.error !== null ? "engine error" : winner === g.me ? "won" : winner !== null ? "lost" : !snap.me.alive ? "eliminated" : "time limit";
   const calls = records.flatMap((r) => [
     ...(r.commander ? [r.commander] : []),
+    ...(r.commander?.revision ? [r.commander.revision] : []),
     ...(r.strategist ? [r.strategist] : []),
   ]);
   const result: MatchResult = {

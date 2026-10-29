@@ -87,11 +87,12 @@ export function writeReport(
     }
   }
   const called = playing.filter((r) => r.commander !== null).length;
+  const revised = playing.filter((r) => r.commander?.revision).length;
   lines.push(
     "",
     "## Orders",
     "",
-    `The commander was called on ${called} of ${playing.length} turns; the troop rules reduced ${reduced} orders.`,
+    `The commander was called on ${called} of ${playing.length} turns; ${revised} answers were sent back by the self-check; the troop rules reduced ${reduced} orders.`,
     "",
     "| Order | Count |",
     "|---|---:|",
@@ -107,6 +108,7 @@ export function writeReport(
 
   const calls: { role: string; c: LLMCall }[] = records.flatMap((r) => [
     ...(r.commander ? [{ role: "commander", c: r.commander as LLMCall }] : []),
+    ...(r.commander?.revision ? [{ role: "commander", c: r.commander.revision as LLMCall }] : []),
     ...(r.strategist ? [{ role: "strategist", c: r.strategist as LLMCall }] : []),
   ]);
   lines.push("", "## LLM calls", "", "| Role | Calls | Mean latency | Median latency | Errors |", "|---|---:|---:|---:|---:|");

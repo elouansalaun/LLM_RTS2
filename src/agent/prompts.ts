@@ -145,6 +145,8 @@ export function commanderUser(input: {
   rules: TroopRules;
   /** The last orders sent, oldest first ("01:05 expand 30% (standing order)"). */
   lastOrders: string[];
+  /** Set when the previous answer broke the troop rules and is sent back. */
+  feedback?: string;
 }): string {
   const parts: string[] = [];
   if (input.plan) {
@@ -172,6 +174,7 @@ export function commanderUser(input: {
   );
   if (input.why.length > 0) parts.push("", `You are asked now because: ${input.why.join("; ")}.`);
   parts.push("", "## Menu", ...input.menu.map((o) => `- ${o.id}: ${o.label}${o.usesTroops ? " [sends troops]" : ""}`));
+  if (input.feedback) parts.push("", "## Your previous answer broke the troop rules", input.feedback);
   return parts.join("\n");
 }
 

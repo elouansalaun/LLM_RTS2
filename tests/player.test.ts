@@ -110,6 +110,7 @@ describe("the LLM player", () => {
     const turn = await player(new ScriptedLLM([{ id: "expand", troops_percent: 30 }])).takeTurn({ ...p, events: [] });
     expect(turn.rules.reserveAllowsPercent).toBe(16);
     expect(turn.orders[0]).toMatchObject({ id: "expand", troopsPercent: 16, requestedPercent: 30, limitedBy: "reserve" });
+    expect(turn.commander!.revision).not.toBeNull(); // 30% asked, 16% allowed: sent back once
 
     const low = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.2) } }));
     const empty = await player(new ScriptedLLM([{ id: "expand", troops_percent: 30 }, { id: "wait", troops_percent: 0 }])).takeTurn({ ...low, events: [] });
@@ -119,7 +120,7 @@ describe("the LLM player", () => {
 
   it("counts the troop budget across turns, whatever the cadence", async () => {
     const p = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.9) } }));
-    const agent = player(new ScriptedLLM([{ id: "expand", troops_percent: 40 }]), { commanderHeartbeatSeconds: 1 });
+    const agent = player(new ScriptedLLM([{ id: "expand", troops_percent: 40 }]), { commanderHeartbeatSeconds: 1, selfCheck: false });
     const at = (seconds: number) => agent.takeTurn({ ...p, snap: { ...p.snap, seconds }, events: [] });
     expect((await at(40)).orders[0].troopsPercent).toBe(40);
     expect((await at(41)).orders[0]).toMatchObject({ troopsPercent: 20, limitedBy: "budget" }); // 60 - 40 left
@@ -127,9 +128,10 @@ describe("the LLM player", () => {
     expect((await at(46)).orders[0].troopsPercent).toBe(40); // 5 s later, the 40% of 0:40 left the window
   });
 
-  it("scales several orders together to fit the troop rules", async () => {
+  it("scales several orders together and sends them back once (self-check)", async () => {
     const p = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.9) } }));
     const turn = await player(new ScriptedLLM([{ id: "expand", troops_percent: 50 }, { id: p.attack, troops_percent: 40 }])).takeTurn({ ...p, events: [] });
+    expect(turn.commander!.revision?.user).toContain("## Your previous answer broke the troop rules");
     expect(turn.orders.map((o) => o.troopsPercent)).toEqual([33, 26]); // 90% asked, 60% allowed
     expect(turn.orders.every((o) => o.limitedBy === "budget")).toBe(true);
   });

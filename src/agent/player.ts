@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DEFAULT_TROOP_PERCENT, MenuOption, TROOP_PERCENTS } from "../actions/menu";
 import { KnowledgeSection, Phase, phaseOf, retrieve, situationTags } from "../knowledge/kb";
 import type { ChatRequest, ChatResult, LLM } from "../llm/lmstudio";
-import { clock, Graph, neighboursOf, UNCLAIMED } from "../state/graph";
+import { clock, fmt, Graph, neighboursOf, UNCLAIMED } from "../state/graph";
 import type { Snapshot } from "../state/observe";
 import type { GameEvent } from "./events";
 import {
@@ -49,6 +49,8 @@ export const AgentSettingsSchema = z
     minReservePercent: z.number().min(0).max(60).default(25),
     /** The commander is called when something changes, and at least this often (game seconds). */
     commanderHeartbeatSeconds: z.number().positive().default(15),
+    /** Send orders that break the troop rules back to the commander once, with the numbers. */
+    selfCheck: z.boolean().default(true),
   })
   // An event re-plan that waits longer than the scheduled plan can never fire.
   .transform((s) => ({ ...s, replanAfterSeconds: Math.min(s.replanAfterSeconds, s.strategistEverySeconds) }));
@@ -79,6 +81,8 @@ export type CommanderCall = LLMCall & { reason: string };
 export interface CommanderTurn extends CommanderCall {
   /** Why the commander was called this turn. */
   why: string[];
+  /** The second answer, when the first broke the troop rules (self-check). */
+  revision: CommanderCall | null;
 }
 
 export interface Order {
@@ -185,8 +189,16 @@ export class LLMPlayer {
     const why = this.commanderWhy(snap, input.events, menu, strategist !== null);
     if (why.length > 0) {
       const first = await this.runCommander(input, why, rules);
-      commander = { ...first, why };
+      commander = { ...first, why, revision: null };
       chosen = this.parse(first.answer, menu);
+      // Self-check: orders that break the troop rules go back once, with the numbers.
+      const asked = troopTotal(chosen);
+      if (this.settings.selfCheck && !snap.spawnPhase && asked > rules.allowedPercent + 10) {
+        const revision = await this.runCommander(input, why, rules, this.feedback(asked, rules, snap));
+        commander.revision = revision;
+        const revised = this.parse(revision.answer, menu);
+        if (revision.error === null && revised.length > 0) chosen = revised;
+      }
       this.lastCommander = { seconds: snap.seconds, menuIds: new Set(menu.map((o) => o.id)) };
       this.sinceCommander = [];
     }
@@ -245,6 +257,16 @@ export class LLMPlayer {
       budgetLeftPercent,
       reserveAllowsPercent,
     };
+  }
+
+  private feedback(asked: number, rules: Turn["rules"], snap: Snapshot): string {
+    const window = this.settings.troopBudgetWindowSeconds;
+    const cause =
+      rules.reserveAllowsPercent <= rules.budgetLeftPercent
+        ? `you keep a reserve of ${rules.reservePercent}% of your maximum (${fmt(rules.reserveTroops)} troops) and you have ${fmt(snap.me.troops)}`
+        : `at most ${this.settings.troopBudgetPercent}% of your army may leave per ${window} s of game time, and ${this.settings.troopBudgetPercent - rules.budgetLeftPercent}% already left in the last ${window} s`;
+    const limit = rules.allowedPercent > 0 ? `at most ${rules.allowedPercent}% can leave now` : "no troops can leave now";
+    return `You asked to send ${asked}% of your troops in total, but ${limit}: ${cause}. Give your orders again within the limit: send less, choose orders that do not send troops (build, alliance), or wait.`;
   }
 
   /** The plan's standing order: one expansion wave at a time while unclaimed land touches us. */
@@ -359,6 +381,7 @@ export class LLMPlayer {
     input: { menu: MenuOption[]; situation: string },
     why: string[],
     rules: TroopRules,
+    feedback?: string,
   ): Promise<CommanderCall> {
     const request: ChatRequest = {
       system: commanderSystem(this.core, this.settings.maxActions),
@@ -371,6 +394,7 @@ export class LLMPlayer {
         why,
         rules,
         lastOrders: this.history,
+        ...(feedback ? { feedback } : {}),
       }),
       schema: commanderSchema(input.menu, this.settings.maxActions),
       schemaName: "commander_orders",
