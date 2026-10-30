@@ -15,7 +15,7 @@
     "knowledgeSections": 6,
     "troopBudgetPercent": 60,
     "troopBudgetWindowSeconds": 5,
-    "minReservePercent": 25,
+    "minReservePercent": 20,
     "commanderHeartbeatSeconds": 15,
     "selfCheck": true
   },

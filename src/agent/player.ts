@@ -42,11 +42,13 @@ export const AgentSettingsSchema = z
     troopBudgetWindowSeconds: z.number().positive().default(5),
     /**
      * Reserve floor: the lowest reserve the strategist may choose, as a share of
-     * the troop maximum. Troop orders never take the army below the plan's
-     * reserve. I added it because the model kept citing "keep troops near 40%"
-     * while sitting at 0%.
+     * the troop maximum (it chooses between this and 40%). Troop orders never
+     * take the army below the plan's reserve. I added it because the model kept
+     * citing "keep troops near 40%" while sitting at 0%. In my offline tests,
+     * 25% kept the army safe without slowing the opening; 50% blocked all
+     * expansion for the first 10 seconds.
      */
-    minReservePercent: z.number().min(0).max(60).default(25),
+    minReservePercent: z.number().min(0).max(40).default(20),
     /** The commander is called when something changes, and at least this often (game seconds). */
     commanderHeartbeatSeconds: z.number().positive().default(15),
     /** Send orders that break the troop rules back to the commander once, with the numbers. */

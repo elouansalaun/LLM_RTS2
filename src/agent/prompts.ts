@@ -10,7 +10,7 @@ export const PRIORITIES = ["expand", "attack", "defend", "economy", "diplomacy",
  * at home. Only the values at or above minReservePercent are offered, so 0
  * (no floor) exists only when the setting allows it.
  */
-export const RESERVE_PERCENTS = [0, 25, 30, 40, 50, 60] as const;
+export const RESERVE_PERCENTS = [0, 20, 25, 30, 35, 40] as const;
 
 /** Sizes of the automatic expansion waves: share of the troops per wave (0 = none). */
 export const WAVE_PERCENTS = [0, 10, 20, 30, 40] as const;
@@ -53,7 +53,7 @@ export function strategistSystem(core: KnowledgeSection[], reserves: readonly nu
     '- "plan": what to do for the next 30 seconds, in one to three short sentences (at most 600 characters). Be concrete: name the target and the share of your troops to send, as a percentage (for example "attack Fijian Territory with 30% of the troops").',
     `- "priorities": one to three of ${PRIORITIES.join(", ")}, most important first.`,
     '- "focus": the one player that matters most right now (to attack or to watch), "unclaimed", or "none".',
-    `- "reserve_percent": the share of your troop maximum to always keep at home, one of ${reserves.join(", ")}. Troops at home defend your land and keep growing; the commander cannot send troops below this reserve.`,
+    `- "reserve_percent": the share of your troop maximum to always keep at home, one of ${reserves.join(", ")}. Troops at home defend your land and keep growing; the commander cannot send troops below this reserve. 25-30 is a good default; more only when a stronger neighbour threatens you, since a high reserve slows expansion (at the start your troops are only about 20% of the maximum).`,
     `- "wave_percent": while unclaimed land touches you, the code launches expansion waves on its own, one at a time, each with this share of your troops (one of ${WAVE_PERCENTS.join(", ")}; 0 stops them).`,
     '- "knowledge_used": the titles of the knowledge excerpts your plan relies on (up to three).',
   ].join("\n");
