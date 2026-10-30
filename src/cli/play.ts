@@ -38,6 +38,12 @@ if (args.difficulty) raw.game.difficulty = args.difficulty;
 if (args.minutes) raw.maxMinutes = Number(args.minutes);
 if (args.model) raw.llm.model = args.model;
 const config = MatchConfigSchema.parse(raw);
+if (config.agent.decisionEverySeconds < 2) {
+  console.warn(
+    `Note: a turn every ${config.agent.decisionEverySeconds} s of game time. The LLM is called only when something changes, ` +
+      "but each call takes several seconds, so the game will run several times slower than real time.",
+  );
+}
 
 let llm: LLM;
 if (args.mock) {
