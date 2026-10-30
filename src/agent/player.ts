@@ -141,8 +141,8 @@ interface Chosen {
  *   to keep and the size of the expansion waves.
  * - The commander is called only when something changed (a new plan, an
  *   attack, a new option on the menu) or every 15 s. It picks up to 2 orders.
- * - Between calls, the code relaunches the plan's expansion waves, and every
- *   troop order respects the plan's reserve and a troop budget per 5 s.
+ * - Between calls, the code feeds the plan's expansion waves, and every troop
+ *   order respects the plan's reserve and a troop budget per 5 s.
  *
  * In my games the 9B model was decent at broad plans and bad at repeating
  * small orders on time, so the model plans and the code does the repetition.
@@ -271,12 +271,17 @@ export class LLMPlayer {
     return `You asked to send ${asked}% of your troops in total, but ${limit}: ${cause}. Give your orders again within the limit: send less, choose orders that do not send troops (build, alliance), or wait.`;
   }
 
-  /** The plan's standing order: one expansion wave at a time while unclaimed land touches us. */
+  /**
+   * The plan's standing order: while unclaimed land touches us, feed the
+   * expansion with the plan's wave share on every turn; the troop rules decide
+   * how much really leaves. (I used to wait for each wave to end before
+   * sending the next. That was slower: a wave made small by the reserve runs
+   * for a long time and holds up the next one.)
+   */
   private standingOrders(snap: Snapshot, menu: MenuOption[], chosen: Chosen[]): Chosen[] {
     if (snap.spawnPhase || this.plan === null || this.plan.wave_percent <= 0) return [];
     const expand = menu.find((o) => o.id === "expand");
     if (expand === undefined || chosen.some((c) => c.option.id === "expand")) return [];
-    if (snap.me.outgoingAttacks.some((a) => a.to === UNCLAIMED)) return []; // a wave is still running
     return [{ option: expand, pct: this.plan.wave_percent, standing: true }];
   }
 

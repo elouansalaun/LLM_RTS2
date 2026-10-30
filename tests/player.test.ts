@@ -3,7 +3,7 @@ import { buildMenu } from "../src/actions/menu";
 import { AgentSettingsSchema, LLMPlayer } from "../src/agent/player";
 import { loadKnowledge } from "../src/knowledge/kb";
 import type { ChatRequest, ChatResult, LLM } from "../src/llm/lmstudio";
-import { buildGraph, describeSituation, UNCLAIMED } from "../src/state/graph";
+import { buildGraph, describeSituation } from "../src/state/graph";
 import { observe, Snapshot } from "../src/state/observe";
 import { startedGame } from "./helpers";
 
@@ -91,17 +91,22 @@ describe("the LLM player", () => {
     expect(llm.commanderCalls).toBe(3);
   });
 
-  it("launches the plan's expansion waves when none is running", async () => {
-    const p = await position((s) => ({ ...s, me: { ...s.me, outgoingAttacks: [] } }));
+  it("feeds the plan's expansion waves on every turn, within the troop rules", async () => {
+    const p = await position((s) => ({ ...s, me: { ...s.me, troops: Math.round(s.me.troopCap * 0.9) } }));
     const llm = new ScriptedLLM([{ id: "wait", troops_percent: 0 }], { reserve_percent: 25, wave_percent: 30 });
-    const turn = await player(llm).takeTurn({ ...p, events: [] });
-    const wave = turn.orders.find((o) => o.standing);
-    expect(wave?.id).toBe("expand");
-    expect(wave?.troopsPercent).toBe(30);
-
-    const busy = await position((s) => ({ ...s, me: { ...s.me, outgoingAttacks: [{ to: UNCLAIMED, troops: 5000 }] } }));
-    const second = await player(llm).takeTurn({ ...busy, events: [] });
-    expect(second.orders.some((o) => o.standing)).toBe(false);
+    const agent = player(llm, { strategistEverySeconds: 1000 });
+    const at = (seconds: number) => agent.takeTurn({ ...p, snap: { ...p.snap, seconds }, events: [] });
+    const first = await at(40);
+    expect(first.orders.find((o) => o.standing)).toMatchObject({ id: "expand", troopsPercent: 30 });
+    expect(first.orders.find((o) => o.id === "wait")).toBeDefined(); // the commander's own answer
+    const second = await at(41); // no LLM call: only the standing order
+    expect(second.commander).toBeNull();
+    expect(second.orders.map((o) => [o.id, o.troopsPercent, o.standing])).toEqual([["expand", 30, true]]);
+    const third = await at(42); // 60% per 5 s already sent
+    expect(third.orders).toEqual([]);
+    // A commander's own expand order replaces the standing one.
+    const own = await player(new ScriptedLLM([{ id: "expand", troops_percent: 20 }], { reserve_percent: 25, wave_percent: 30 })).takeTurn({ ...p, events: [] });
+    expect(own.orders.map((o) => [o.id, o.troopsPercent, o.standing])).toEqual([["expand", 20, undefined]]);
   });
 
   it("keeps the plan's reserve: orders never take the army below it", async () => {

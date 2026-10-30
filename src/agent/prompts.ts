@@ -12,7 +12,7 @@ export const PRIORITIES = ["expand", "attack", "defend", "economy", "diplomacy",
  */
 export const RESERVE_PERCENTS = [0, 20, 25, 30, 35, 40] as const;
 
-/** Sizes of the automatic expansion waves: share of the troops per wave (0 = none). */
+/** Sizes of the automatic expansion waves: share of the troops sent per turn (0 = none). */
 export const WAVE_PERCENTS = [0, 10, 20, 30, 40] as const;
 
 export interface Plan {
@@ -22,7 +22,7 @@ export interface Plan {
   focus: string;
   /** Share of the troop maximum to keep at home; the code enforces it. */
   reserve_percent: number;
-  /** Share of the troops for each automatic expansion wave; the code relaunches waves. */
+  /** Share of the troops the code sends into unclaimed land on every turn (within the troop rules). */
   wave_percent: number;
   knowledge_used: string[];
   /** Game time when the plan was written. */
@@ -54,7 +54,7 @@ export function strategistSystem(core: KnowledgeSection[], reserves: readonly nu
     `- "priorities": one to three of ${PRIORITIES.join(", ")}, most important first.`,
     '- "focus": the one player that matters most right now (to attack or to watch), "unclaimed", or "none".',
     `- "reserve_percent": the share of your troop maximum to always keep at home, one of ${reserves.join(", ")}. Troops at home defend your land and keep growing; the commander cannot send troops below this reserve. 25-30 is a good default; more only when a stronger neighbour threatens you, since a high reserve slows expansion (at the start your troops are only about 20% of the maximum).`,
-    `- "wave_percent": while unclaimed land touches you, the code launches expansion waves on its own, one at a time, each with this share of your troops (one of ${WAVE_PERCENTS.join(", ")}; 0 stops them).`,
+    `- "wave_percent": while unclaimed land touches you, the code sends this share of your troops into it on every turn, within the troop rules (one of ${WAVE_PERCENTS.join(", ")}; 0 stops it).`,
     '- "knowledge_used": the titles of the knowledge excerpts your plan relies on (up to three).',
   ].join("\n");
 }
@@ -120,7 +120,7 @@ export function commanderSystem(core: KnowledgeSection[], maxActions: number): s
     `- "actions": 1 to ${maxActions} orders. Each is {"id": an option id from the menu, "troops_percent": the share of your current troops to send, in %}.`,
     "  For options marked [sends troops], choose troops_percent from the plan and the situation: 20-30 is a normal wave, 40-60 a serious attack. For all other options put 0.",
     "  All orders draw on the same army: 30% + 30% sends 60% of it. The code enforces the troop rules given in your message (the plan's reserve, and how much may leave right now); orders above them are reduced.",
-    "  While unclaimed land touches you, the code launches the plan's expansion waves by itself: you do not need to order \"expand\" for that.",
+    "  While unclaimed land touches you, the code keeps expanding into it by itself, with the plan's wave share: you do not need to order \"expand\" for that.",
     "Running attacks continue on their own: only repeat one to send more troops. Choose \"wait\" when the running orders already follow the plan.",
   ].join("\n");
 }
