@@ -2,7 +2,7 @@
   "game": {
     "map": "Australia",
     "mapSize": "Compact",
-    "difficulty": "Medium",
+    "difficulty": "Easy",
     "nations": "default",
     "bots": 20,
     "seed": "australia-1",
@@ -10,7 +10,7 @@
   },
   "agent": {
     "decisionEverySeconds": 5,
-    "strategistEverySeconds": 30,
+    "strategistEverySeconds": 20,
     "maxActions": 2,
     "knowledgeSections": 6,
     "troopBudgetPercent": 60,
@@ -28,5 +28,5 @@
     "contextLength": 16384
   },
   "maxMinutes": 30,
-  "mapEveryMinutes": 5
+  "mapEveryMinutes": 1
 }
