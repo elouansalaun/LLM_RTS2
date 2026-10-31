@@ -1,0 +1,50 @@
+{
+  "outcome": "won",
+  "winner": "Qwen",
+  "seconds": 529.1,
+  "rank": 1,
+  "players": 5,
+  "me": {
+    "tiles": 265524,
+    "landPct": 80.91,
+    "troops": 2849770,
+    "gold": 947764,
+    "cities": 14
+  },
+  "standings": [
+    {
+      "name": "Qwen",
+      "kind": "you",
+      "landPct": 80.91
+    },
+    {
+      "name": "Western Australia",
+      "kind": "nation",
+      "landPct": 13.65
+    },
+    {
+      "name": "South Australia",
+      "kind": "nation",
+      "landPct": 5.37
+    },
+    {
+      "name": "Tasmania",
+      "kind": "nation",
+      "landPct": 0.04
+    },
+    {
+      "name": "Queensland",
+      "kind": "nation",
+      "landPct": 0.01
+    }
+  ],
+  "turns": 107,
+  "llm": {
+    "model": "qwen/qwen3.5-9b",
+    "calls": 130,
+    "strategistCalls": 29,
+    "meanMs": 8034,
+    "errors": 0
+  },
+  "outDir": "/Users/elouan/Desktop/Projets/LLM_RTS2/runs/20261013-183349-australia-1"
+}

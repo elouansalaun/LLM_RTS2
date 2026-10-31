@@ -1,0 +1,33 @@
+{
+  "game": {
+    "map": "Australia",
+    "mapSize": "Compact",
+    "difficulty": "Easy",
+    "nations": "default",
+    "bots": 20,
+    "seed": "australia-1",
+    "playerName": "Qwen"
+  },
+  "agent": {
+    "decisionEverySeconds": 5,
+    "strategistEverySeconds": 20,
+    "replanAfterSeconds": 15,
+    "maxActions": 2,
+    "knowledgeSections": 6,
+    "troopBudgetPercent": 60,
+    "troopBudgetWindowSeconds": 5,
+    "minReservePercent": 20,
+    "commanderHeartbeatSeconds": 15,
+    "selfCheck": true
+  },
+  "llm": {
+    "baseURL": "http://localhost:1234/v1",
+    "model": "qwen/qwen3.5-9b",
+    "temperature": 0.3,
+    "maxTokens": 800,
+    "timeoutSeconds": 180,
+    "contextLength": 16384
+  },
+  "maxMinutes": 30,
+  "mapEveryMinutes": 1
+}
