@@ -9,9 +9,8 @@
 An agent that lets a **small local LLM (Qwen 3.5 9B, running in LM Studio on a laptop)** play [OpenFront](https://github.com/openfrontio/OpenFrontIO), a real-time strategy game, against the game's own AI. The model reads the game as a **graph**, draws on a **knowledge base** of tested rules, and plays through **two roles**: a strategist that plans and a commander that gives orders. The code enforces the plan between calls.
 
 <p align="center">
-  <img src="docs/match-australia-1/final.png" width="640" alt="Final map: the LLM (gold) holds 81% of Australia">
+  <img src="docs/llm_rts_explained.gif" width="640" alt="Final map: the LLM (gold) holds 81% of Australia">
   <br>
-  <em>End of the match: the LLM (gold) holds 81% of the land. Red and green are the two surviving nations; white squares are buildings.</em>
 </p>
 
 ## Headline result
